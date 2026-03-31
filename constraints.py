@@ -55,7 +55,7 @@ def check_home_away_balance(schedule):
         home = home_count.get(team, 0)
         away = away_count.get(team, 0)
 
-        if abs(home - away) > 1:
+        if abs(home - away) >= 1:
             return False
 
     return True
@@ -115,7 +115,7 @@ def csp_validate(schedule):
     for team in schedule.teams:
         home = home_count.get(team, 0)
         away = away_count.get(team, 0)
-        if abs(home - away) > 1:
+        if abs(home - away) >= 1:
             violations.append(f"Team '{team}' has unbalanced home/away: it plays  {home} home vs {away} away")
 
     return violations        
