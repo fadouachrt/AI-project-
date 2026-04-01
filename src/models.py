@@ -1,12 +1,5 @@
-"""
-Data models for the league scheduler.
-Simple classes — no external dependencies.
-"""
-
 
 class Match:
-    """A single match between two teams."""
-
     def __init__(self, home, away):
         self.home = home  # home team name (str)
         self.away = away  # away team name (str)
