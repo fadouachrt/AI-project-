@@ -1,3 +1,17 @@
+"""
+this is how you can use this file:
+
+from src.data_loader import load_all
+teams_dict, dist_matrix = load_all("data/teams.csv")
+
+you will get 2 dictionaries 
+# teams_dict = { "MC Alger": (36.68, 2.96), ... }  => each team assigned to a tuple of (lon,lat) coordinates
+# dist_matrix["MC Alger"]["JS Saoura"] = 738.5  (km) +> each pair of teams associated with the distance between their stadiums
+
+"""
+
+
+
 import csv 
 import math 
 from pathlib import Path
@@ -6,7 +20,6 @@ from pathlib import Path
 _EARTH_RADIUS_KM = 6_371.0          # mean radius of Earth in kilometres
 
 
-# call this function to load data for testing (you all need it)
 def load_teams(filepath: str) -> dict:
     path = Path(filepath)
     if not path.exists():
@@ -78,7 +91,7 @@ def build_distance_matrix(teams_dict: dict) -> dict:
     return dist
 
 
-# you may need this to load teams and distances at once 
+#load teams and distances at once 
 def load_all(filepath: str) -> tuple:
     teams_dict  = load_teams(filepath)
     dist_matrix = build_distance_matrix(teams_dict)
