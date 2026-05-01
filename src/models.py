@@ -1,37 +1,46 @@
+import random 
+
+THIRD_DAY_OPTION = ["Wednesday", "Thursday", "Sunday"]
+ROUND_DAYS = ["Friday", "Saturday"]
 
 class Match:
-    def __init__(self, home, away):
-        self.home = home  # home team name (str)
-        self.away = away  # away team name (str)
+    def __init__ ( self , home , away , day = None ) :
+        self.home = home 
+        self.away = away 
+        self.day = day 
+        self.is_derby = away.name in home.derby_rivals
 
-    def __repr__(self):
-        return f"{self.home} (H) vs {self.away}"
-
-    def pair(self):
-        """Return the unordered pair as a frozenset (ignores home/away)."""
-        return frozenset({self.home, self.away})
-
-    def ordered_pair(self):
-        """Return the ordered pair as a tuple (home, away)."""
-        return (self.home, self.away)
+    def __repr__ (self) :
+        return f"{self.home.name} (H) vs {self.away.name} | {self.day} | Derby : {self.is_derby} "
 
 
+class Round:
+    def __init__ ( self , round_index , matches = None ):
+        self.round_index = round_index 
+        self.matches = matches if matches is not None else []
+        self.third_day = random.choice( THIRD_DAY_OPTION )
+        self.days = ROUND_DAYS + [self.third_day]
+        
+    def __repr__ ( self ):
+        return f" Round {self.round_index + 1 } | Days : {self.days} | Matches : {len(self.matches)}"
+    
 class Schedule:
-    """A full season schedule: a list of rounds, each round is a list of Matches."""
-
-    def __init__(self, rounds=None, teams=None):
+    def __init__ ( self , rounds = None , teams = None):
         self.rounds = rounds if rounds is not None else []
         self.teams = teams if teams is not None else []
-
-    def total_rounds(self):
-        return len(self.rounds)
-
-    def total_matches(self):
-        return sum(len(round_matches) for round_matches in self.rounds)
-
-    def print_schedule(self):
-        """Pretty-print the full schedule."""
-        for i, round_matches in enumerate(self.rounds, 1):
-            print(f"\n--- Round {i} ---")
-            for match in round_matches:
+        
+    def total_rounds( self ) : 
+        return len( self.rounds )
+    
+    def total_matches ( self ):
+        return sum( len(r.matches) for r in self.rounds )
+    
+    def print_schedule ( self ) : 
+        for r in self.rounds:
+            print(f"\n--- Round {r.round_index + 1} | Days: {r.days} ---")
+            for match in r.matches:
                 print(f"  {match}")
+                
+
+    
+    

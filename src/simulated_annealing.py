@@ -1,7 +1,11 @@
 import math
 import random
-from neighbors import random_neighbor, _deep_copy_schedule
+from neighbour import generate_one_random_neighbor
+from fixed_version import cost_function,build_dict_matrix
 from models import Match, Schedule
+from copy import deepcopy
+from schedule import double_round_robin
+
 
 #################### dummy functions just for testing ###################
 DUMMY_DISTANCES = {
@@ -15,18 +19,18 @@ DUMMY_DISTANCES = {
 DUMMY_DERBIES = {frozenset(["A", "B"])}  # A vs B is our test derby
 
 
-def dummy_cost(schedule, distances, derbies):
-    """
-    Simple cost: travel distance only (no penalties yet).
-    Works with Schedule objects. Replace with Douaa's total_cost() later.
-    """
-    cost = 0
-    for round_matches in schedule.rounds:
-        for match in round_matches:
-            # Away team travels to home team's city
-            cost += distances.get((match.home, match.away), 0)
-    return cost
-
+# def dummy_cost(schedule, distances, derbies):
+#     """
+#     Simple cost: travel distance only (no penalties yet).
+#     Works with Schedule objects. Replace with Douaa's total_cost() later.
+#     """
+#     cost = 0
+#     for round_matches in schedule.rounds:
+#         for match in round_matches:
+#             # Away team travels to home team's city
+#             cost += distances.get((match.home, match.away), 0)
+#     return cost
+teams = ["A", "B", "C", "D"]
 def build_test_schedule():
     """
     Verified 4-team DRR. Every pair meets exactly twice.
@@ -50,32 +54,32 @@ def build_test_schedule():
 
 
 ########################### simulated anealing function ################################
-def simulated_annealing(schedule ,cost_func,distances ,derbies ,T_start ,T_min ,alpha ,max_iteartion):
+def simulated_annealing(schedule ,distances ,derbies ,weekends,teams,T_start ,T_min ,alpha ,max_iteartion):
     T = T_start
-    current=_deep_copy_schedule(schedule)
-    current_cost = cost_func(current,distances,derbies)
-    best = _deep_copy_schedule(current)
-    best_cost = cost_func(best,distances)
+    current=deepcopy(schedule)
+    current_cost = cost_function(current,teams,distances,derbies,weekends)
+    best = deepcopy(current)
+    best_cost = cost_function(best,teams,distances,derbies,weekends)
     it=0
     history = [] #track improvment of cost
     while it < max_iteartion and T > T_min:
         
-        neighbor,move_desc = random_neighbor(current)
-        neighbor_cost = cost_func(neighbor,distances,derbies)
+        neighbor = generate_one_random_neighbor(current)
+        neighbor_cost = cost_function(neighbor,teams,distances,derbies,weekends)
         delta = neighbor_cost - current_cost
         if delta < 0:
-            current = _deep_copy_schedule(neighbor)
+            current = deepcopy(neighbor)
             current_cost = neighbor_cost
         else:
             P = math.exp(-delta/T)
             r=random.random()
             if r< P:
-                current = _deep_copy_schedule(neighbor)
+                current = deepcopy(neighbor)
                 current_cost = neighbor_cost
             else:
                 pass
         if current_cost<best_cost:
-            best = _deep_copy_schedule(current)
+            best = deepcopy(current)
             best_cost = current_cost
         
         T = T * alpha
@@ -87,16 +91,18 @@ def simulated_annealing(schedule ,cost_func,distances ,derbies ,T_start ,T_min ,
 
 
 if __name__ == "__main__":
-    schedule = build_test_schedule()
+    schedule = double_round_robin(teams)
+    distances=build_dict_matrix(teams)
     best, best_cost, history = simulated_annealing(
         schedule      = schedule,
-        cost_func     = dummy_cost,
-        distances     = DUMMY_DISTANCES,
+        distances     = distances,
         derbies       = DUMMY_DERBIES,
+        weekends      =["Friday","Saturday"],
+        teams          = teams,
         T_start       = 10000,
-        alpha         = 0.995,
         T_min         = 0.1,
-        max_iteration = 5000,
+        alpha         = 0.995,
+        max_iteration = 5000
     )
     print(f"\nBest schedule found (cost={best_cost}):")
     best.print_schedule()
