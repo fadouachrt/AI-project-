@@ -1,7 +1,7 @@
 import random 
 from models import Match , Round , Schedule 
 
-def double_round_robin ( teams ) : 
+def double_round_robin ( teams ) : #teams here is list?
     n = len( teams )
     if n % 2 != 0:
         raise ValueError(f"Need an even number of teams, got {n}")

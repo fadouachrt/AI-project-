@@ -11,14 +11,11 @@ def Derbies_penalty(schedule, derbies, weekend, penalty=500):
 
     total = 0
 
-    for r in schedule:
-        for (home, away, day) in r:
-
-            match = frozenset([home, away])
-
-            if match in derbies and day not in weekend:
+    for r in schedule.rounds:
+        for match in r.matches:
+            pair = frozenset([match.home, match.away])
+            if pair in derbies and match.day not in weekend:
                 total += penalty
-
     return total
 
 
@@ -32,16 +29,12 @@ def Rest_day_penalty(schedule, teams, penalty=500):
 
         team_match_day = []
 
-        for Round in schedule:
-            for (home, away, day) in Round:
-                if team == home or team == away:
-                    team_match_day.append(day)
-
+        for round in schedule.rounds:
+            for match in round.matches:
+                if match.home == team or match.away == team:
+                    team_match_day.append(match.day)
         for i in range(len(team_match_day) - 1):
-
-            rest = 7 - match_days[team_match_day[i]] + match_days[team_match_day[i+1]]
-
-            if rest < 6:
+            if match_days[team_match_day[i+1]] - match_days[team_match_day[i]] < 2:
                 total += penalty
 
     return total
@@ -83,9 +76,9 @@ def total_distance(schedule, dist_Matric):
 
     total = 0
 
-    for Round in schedule:
-        for (home, away, day) in Round:
-            total += dist_Matric[(away, home)]
+    for round in schedule.rounds:
+        for match in round.matches:
+            total += dist_Matric[match.away][match.home]
 
     return total
 

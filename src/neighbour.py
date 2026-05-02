@@ -28,9 +28,10 @@ def swap_home_away ( schedule , round_i , match_i ):
         
     mirror_round = new_schedule.rounds [ mirror_i ]
     
-    for m in mirror_round.matches : 
-        if m.pair() == match.pair() : 
-            m.home , m.away = m.away , m.home 
+    match_pair = frozenset([match.home, match.away])
+    for m in mirror_round.matches:
+        if frozenset([m.home, m.away]) == match_pair:
+            m.home, m.away = m.away, m.home
             break 
         
     return new_schedule

@@ -8,10 +8,10 @@ class Match:
         self.home = home 
         self.away = away 
         self.day = day 
-        self.is_derby = away.name in home.derby_rivals
+        # self.is_derby = away.name in home.derby_rivals
 
     def __repr__ (self) :
-        return f"{self.home.name} (H) vs {self.away.name} | {self.day} | Derby : {self.is_derby} "
+        return f"{self.home} (H) vs {self.away} | {self.day} "
 
 
 class Round:
