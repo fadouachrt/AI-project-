@@ -1,3 +1,4 @@
+
 import copy 
 import random 
 from models import Match , Round , Schedule
@@ -28,10 +29,9 @@ def swap_home_away ( schedule , round_i , match_i ):
         
     mirror_round = new_schedule.rounds [ mirror_i ]
     
-    match_pair = frozenset([match.home, match.away])
-    for m in mirror_round.matches:
-        if frozenset([m.home, m.away]) == match_pair:
-            m.home, m.away = m.away, m.home
+    for m in mirror_round.matches : 
+        if m.pair() == match.pair() : 
+            m.home , m.away = m.away , m.home 
             break 
         
     return new_schedule
@@ -62,38 +62,33 @@ def swap_third_day ( schedule , round_i , round_j ) :
     for match in round_a.matches : 
         if match.day == old_third_a : 
             match.day = round_a.third_day
-            break     
+               
     for match in round_b.matches : 
         if match.day == old_third_b : 
             match.day = round_b.third_day
-            break 
+             
         
     return new_schedule
 
-def generate_all_neighbours ( schedule ) : 
-    neighbours = []
-    n = len ( schedule.rounds )
-    
-    for i in range ( n ) : 
-        for j in range ( i + 1 , n ) : 
-            neighbours.append( swap_rounds ( schedule , i , j ) ) 
-            
-    
-    for i , r in enumerate ( schedule.rounds ) : 
-        for m_inx in range ( len( r.matches )) :
-            neighbours.append ( swap_home_away ( schedule , i , m_inx))
-            
-    for i , r in enumerate ( schedule.rounds ) :
-        for ma_inx in range ( len ( r.matches )) : 
-            for mb_inx in range ( ma_inx + 1 , len ( r.matches)) : 
-                neighbours.append ( swap_days_in_round ( schedule , i , ma_inx , mb_inx))
-                
-    for i in range ( n ) : 
-        for j in range ( i + 1 , n ) : 
-            neighbours.append ( swap_third_day ( schedule , i , j ))
-            
-    return neighbours
+def generate_all_neighbours(schedule):
+    n = len(schedule.rounds)
 
+    for i in range(n):
+        for j in range(i + 1, n):
+            yield swap_rounds(schedule, i, j)       
+
+    for i, r in enumerate(schedule.rounds):
+        for m_idx in range(len(r.matches)):
+            yield swap_home_away(schedule, i, m_idx)
+
+    for i, r in enumerate(schedule.rounds):
+        for a in range(len(r.matches)):
+            for b in range(a + 1, len(r.matches)):
+                yield swap_days_in_round(schedule, i, a, b) 
+
+    for i in range(n):
+        for j in range(i + 1, n):
+            yield swap_third_day(schedule, i, j)    
 def generate_one_random_neighbor(schedule):
     n = len(schedule.rounds)
     move = random.choice([1, 2, 3, 4])
@@ -120,4 +115,4 @@ def generate_one_random_neighbor(schedule):
          
 
     
-    
+

@@ -1,19 +1,33 @@
+
 import random 
 
 THIRD_DAY_OPTION = ["Wednesday", "Thursday", "Sunday"]
 ROUND_DAYS = ["Friday", "Saturday"]
 
+class Team:
+    def __init__ (self, name, lat, lon, derby_rivals=None):
+        self.name = name
+        self.lat = lat
+        self.lon = lon
+        self.derby_rivals = derby_rivals or []
+
+    def repr(self):
+        return f"Team({self.name})"
 class Match:
     def __init__ ( self , home , away , day = None ) :
         self.home = home 
         self.away = away 
         self.day = day 
-        # self.is_derby = away.name in home.derby_rivals
+        self.is_derby = away.name in home.derby_rivals
 
     def __repr__ (self) :
-        return f"{self.home} (H) vs {self.away} | {self.day} "
+        return f"{self.home.name} (H) vs {self.away.name} | {self.day} | Derby : {self.is_derby} "
 
-
+    def pair ( self ) :
+        return frozenset ( {self.home.name , self.away.name })
+    
+    def ordered_pair ( self ) : 
+        return ( self.home.name , self.away.name ,  )
 class Round:
     def __init__ ( self , round_index , matches = None ):
         self.round_index = round_index 
@@ -43,4 +57,5 @@ class Schedule:
                 
 
     
+
     

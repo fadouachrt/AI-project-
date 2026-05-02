@@ -1,7 +1,7 @@
 import random 
 from models import Match , Round , Schedule 
 
-def double_round_robin ( teams ) : #teams here is list?
+def double_round_robin ( teams ) : 
     n = len( teams )
     if n % 2 != 0:
         raise ValueError(f"Need an even number of teams, got {n}")
@@ -45,14 +45,14 @@ def double_round_robin ( teams ) : #teams here is list?
     return Schedule ( rounds = all_rounds , teams= list ( teams ))
 
 def assign_all_days ( schedule ) : 
-    for round in schedule.rounds : 
-        assign_match_day ( round )
+    for round_obj in schedule.rounds : 
+        assign_match_day ( round_obj )
         
     return schedule
 
-def assign_match_day ( round ) : 
-    derby_matches = [ m for m in round.matches if m.is_derby ]
-    regular_matches = [ m for m in round.matches if not m.is_derby ]
+def assign_match_day ( round_obj ) : 
+    derby_matches = [ m for m in round_obj.matches if m.is_derby ]
+    regular_matches = [ m for m in round_obj.matches if not m.is_derby ]
     
     mid = len (regular_matches) // 2 
     friday_matches = regular_matches [:mid ]
@@ -63,7 +63,8 @@ def assign_match_day ( round ) :
     for match in friday_matches : 
         match.day = "Friday"
     for match in third_matches : 
-        match.day = round.third_day 
+        match.day = round_obj.third_day 
         
         
+
         
