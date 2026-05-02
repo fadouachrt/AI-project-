@@ -4,10 +4,6 @@ this is how you can use this file:
 from src.data_loader import load_all
 teams_dict, dist_matrix = load_all("data/teams.csv")
 
-you will get 2 dictionaries 
-# teams_dict = { "MC Alger": (36.68, 2.96), ... }  => each team assigned to a tuple of (lon,lat) coordinates
-# dist_matrix["MC Alger"]["JS Saoura"] = 738.5  (km) +> each pair of teams associated with the distance between their stadiums
-
 """
 
 
@@ -18,11 +14,7 @@ from models import Team
 
 
 
-# ════════════════════════════════════════════════════════════
-# data_loader.py  — final version
-# ════════════════════════════════════════════════════════════
-
-# -- Derby rivals (from knowledge of Algerian football) ------
+# -- Derby rivals ------
 DERBY_RIVALS = {
     "MC Alger"      : ["USM Alger", "CR Belouizdad"],
     "USM Alger"     : ["MC Alger",  "CR Belouizdad"],
