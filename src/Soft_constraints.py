@@ -1,3 +1,6 @@
+import Soft_constraints
+from models import Match , Round , Schedule
+
 def Derbies_penalty(schedule, derbies, weekend, penalty=500):
 
     total = 0
@@ -14,7 +17,14 @@ def Derbies_penalty(schedule, derbies, weekend, penalty=500):
 
 
 
+
 def Rest_day_penalty(schedule, teams, penalty=500):
+
+    match_days = {
+        "Friday": 0,
+        "Saturday": 1,
+        "Sunday": 2
+    }
 
     total = 0
 
@@ -36,42 +46,6 @@ def Rest_day_penalty(schedule, teams, penalty=500):
                 total += penalty
 
     return total
-
-
-def total_distance(schedule, dist_Matric, teams):
-
-    total = 0
-
-    current_position = {team.name: team.name for team in teams}
-
-    for round_obj in schedule.rounds:
-        for match in round_obj.matches:
-
-            from_city = current_position[match.away]
-            to_city = match.home
-
-            total += dist_Matric[(from_city, to_city)]
-
-            current_position[match.away] = match.home
-            current_position[match.home] = match.home
-
-    return total
-
-
-
-
-def cost_function(schedule, teams, dict_Matric, derbies, weekend, penalty=500):
-
-    total_cost = 0
-
-    total_cost += total_distance(schedule, dict_Matric, teams)
-    total_cost += Rest_day_penalty(schedule, teams, penalty)
-    total_cost += Derbies_penalty(schedule, derbies, weekend, penalty)
-
-    return total_cost
-
-
-
 def successive_away_penalty(team, schedule, penalty=500):
 
     total = 0
