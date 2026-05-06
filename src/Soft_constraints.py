@@ -1,5 +1,5 @@
-
-from models import Match , Round , Schedule 
+import Soft_constraints
+from models import Match , Round , Schedule
 
 def Derbies_penalty(schedule, derbies, weekend, penalty=500):
 
