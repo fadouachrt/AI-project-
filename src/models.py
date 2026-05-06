@@ -1,14 +1,12 @@
-import random 
 
 THIRD_DAY_OPTION = ["Wednesday", "Thursday", "Sunday"]
 ROUND_DAYS = ["Friday", "Saturday"]
 
 class Team:
-    def __init__ (self, name, lat, lon, derby_rivals=None):
+    def __init__ (self, name, lat, lon):
         self.name = name
         self.lat = lat
         self.lon = lon
-        self.derby_rivals = derby_rivals or []
 
     def repr(self):
         return f"Team({self.name})"
@@ -17,26 +15,25 @@ class Match:
         self.home = home 
         self.away = away 
         self.day = day 
-        self.is_derby = away.name in home.derby_rivals
 
     def __repr__ (self) :
-        return f"{self.home.name} (H) vs {self.away.name} | {self.day} | Derby : {self.is_derby} "
+        return f"{self.home.name} (H) vs {self.away.name} | {self.day} "
 
     def pair ( self ) :
         return frozenset ( {self.home.name , self.away.name })
     
     def ordered_pair ( self ) : 
-        return ( self.home.name , self.away.name ,  )
+        return ( self.home.name , self.away.name , self.day  )
 class Round:
     def __init__ ( self , round_index , matches = None ):
         self.round_index = round_index 
         self.matches = matches if matches is not None else []
-        self.third_day = random.choice( THIRD_DAY_OPTION )
+        self.third_day = THIRD_DAY_OPTION [ round_index % len ( THIRD_DAY_OPTION ) ]
         self.days = ROUND_DAYS + [self.third_day]
         
     def __repr__ ( self ):
         return f" Round {self.round_index + 1 } | Days : {self.days} | Matches : {len(self.matches)}"
-    
+        
 class Schedule:
     def __init__ ( self , rounds = None , teams = None):
         self.rounds = rounds if rounds is not None else []
