@@ -7,16 +7,16 @@ import time
 class ScheduleCSP:
     def __init__(self, teams):
         self.teams = teams
-        self.sched = self._create_empty_schedule()
-        self.matches = self._generate_all_matches()
+        self.sched = self.create_empty_schedule()
+        self.matches = self.generate_all_matches()
         self.variables = [
             (r_idx, s_idx)
             for r_idx, r in enumerate(self.sched.rounds)
             for s_idx in range(len(r.matches))
         ]
-        self.domains = self._build_initial_domains(self.matches)
+        self.domains = self.build_initial_domains(self.matches)
 
-    def _create_empty_schedule(self):
+    def create_empty_schedule(self):
         n = len(self.teams)
         num_rounds = (n - 1) * 2
         matches_per_round = n // 2
@@ -26,7 +26,7 @@ class ScheduleCSP:
         ]
         return Schedule(rounds=rounds, teams=list(self.teams))
 
-    def _generate_all_matches(self):
+    def generate_all_matches(self):
         matches = []
         for i in range(len(self.teams)):
             for j in range(len(self.teams)):
@@ -34,7 +34,7 @@ class ScheduleCSP:
                     matches.append(Match(self.teams[i], self.teams[j]))
         return matches
 
-    def _is_safe(self, match, r_idx):
+    def is_safe(self, match, r_idx):
         teams_in_round = set()
         for m in self.sched.rounds[r_idx].matches:
             if m:
@@ -42,7 +42,7 @@ class ScheduleCSP:
                 teams_in_round.add(m.away)
         return match.home not in teams_in_round and match.away not in teams_in_round
 
-    def _build_initial_domains(self, remaining_matches):
+    def build_initial_domains(self, remaining_matches):
         domains = {}
         for r_idx, r in enumerate(self.sched.rounds):
             for s_idx, m in enumerate(r.matches):
@@ -53,7 +53,7 @@ class ScheduleCSP:
                     ]
         return domains
 
-    def _are_consistent(self, match_i, slot_i, match_j, slot_j):
+    def are_consistent(self, match_i, slot_i, match_j, slot_j):
         r_i, _ = slot_i
         r_j, _ = slot_j
 
