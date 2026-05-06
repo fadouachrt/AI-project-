@@ -1,0 +1,29 @@
+# ── Python bytecode (auto-generated, never commit) ──
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyc
+
+# ── Conda / virtual environments ──
+.conda/
+.env/
+venv/
+env/
+
+# ── Jupyter notebook checkpoints ──
+.ipynb_checkpoints/
+
+# ── OS junk ──
+.DS_Store          # Mac
+Thumbs.db          # Windows
+desktop.ini        # Windows
+
+# ── VS Code personal settings (not shared) ──
+.vscode/extensions.json
+.vscode/*.code-workspace
+
+# ── Data files that are too large for Git ──
+# data/*.csv  ← uncomment if CSV files are very large
+
+# ── Streamlit cache ──
+.streamlit/secrets.toml

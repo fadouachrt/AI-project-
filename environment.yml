@@ -1,0 +1,20 @@
+name: project4-ligue1
+
+channels:
+  - defaults
+  - conda-forge
+
+dependencies:
+  - python=3.11
+  - pip
+  - pip:
+    - pandas==2.2.2
+    - numpy==1.26.4
+    - plotly==5.22.0
+    - matplotlib==3.9.0
+    - folium==0.16.0
+    - streamlit-folium==0.20.0
+    - streamlit==1.36.0
+    - jupyter==1.0.0
+    - notebook==7.2.0
+    - ipykernel==6.29.5
