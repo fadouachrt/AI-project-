@@ -1,10 +1,11 @@
 from models import Match, Schedule
 
+
 def check_one_match_per_round(schedule):
     for r in schedule.rounds:
         teams_seen = set()
 
-        for match in r:
+        for match in r.matches:
             t1 = match.home
             t2 = match.away
             if t1 in teams_seen or t2 in teams_seen:
@@ -16,14 +17,12 @@ def check_one_match_per_round(schedule):
     return True
 
 
-
-
 def check_all_pairs_exactly_twice(schedule):
     pair_count = {}
 
     for r in schedule.rounds:
-        for match in r:
-            pair = match.pair()   
+        for match in r.matches:
+            pair = frozenset({match.home, match.away})
             pair_count[pair] = pair_count.get(pair, 0) + 1
 
     teams = schedule.teams
@@ -42,9 +41,9 @@ def check_home_away_balance(schedule):
     home_count = {}
     away_count = {}
 
- # Count home and away matches for each team
+    # Count home and away matches for each team
     for r in schedule.rounds:
-        for match in r:
+        for match in r.matches:
             home = match.home
             away = match.away
 
@@ -61,6 +60,30 @@ def check_home_away_balance(schedule):
     return True
 
 
+def is_partially_valid(schedule):
+   
+    for r in schedule.rounds:
+        teams_seen = set()
+        for m in r.matches:
+            if m is None:
+                continue
+            if m.home in teams_seen or m.away in teams_seen:
+                return False
+            teams_seen.add(m.home)
+            teams_seen.add(m.away)
+
+    pair_count = {}
+    for r in schedule.rounds:
+        for m in r.matches:
+            if m is None:
+                continue
+            pair = frozenset({m.home, m.away})
+            pair_count[pair] = pair_count.get(pair, 0) + 1
+            if pair_count[pair] > 2:
+                return False
+
+    return True
+
 
 def is_valid(schedule):
     return (
@@ -71,11 +94,11 @@ def is_valid(schedule):
 
 
 def csp_validate(schedule):
-    violations =[]
+    violations = []
 
     for round_index, r in enumerate(schedule.rounds, 1):
-        teams_seen =set()
-        for match in r :
+        teams_seen = set()
+        for match in r.matches:
             t1 = match.home
             t2 = match.away
 
@@ -87,28 +110,27 @@ def csp_validate(schedule):
             if t2 in teams_seen:
                 violations.append(f"Round {round_index}: Team {t2} plays more than one match.")
             else:
-                teams_seen.add(t2)  
+                teams_seen.add(t2)
 
-   
-    pair_counts={}
+    pair_counts = {}
 
     for r in schedule.rounds:
-        for match in r: 
-            pair=match.pair()
-            pair_counts[pair] =pair_counts.get(pair,0)+1
-    teams=schedule.teams 
+        for match in r.matches:
+            pair = frozenset({match.home, match.away})
+            pair_counts[pair] = pair_counts.get(pair, 0) + 1
+
+    teams = schedule.teams
     for i in range(len(teams)):
-        for j in range(i+1,len(teams)):
-            pair=frozenset({teams[i],teams[j]})
-            count=pair_counts.get(pair,0)
-            if count!=2 :
+        for j in range(i + 1, len(teams)):
+            pair = frozenset({teams[i], teams[j]})
+            count = pair_counts.get(pair, 0)
+            if count != 2:
                 violations.append(f"Pair {pair} plays {count} times instead of 2.")
 
-
-    home_count ={}
-    away_count ={}
+    home_count = {}
+    away_count = {}
     for r in schedule.rounds:
-        for match in r:
+        for match in r.matches:
             home_count[match.home] = home_count.get(match.home, 0) + 1
             away_count[match.away] = away_count.get(match.away, 0) + 1
 
@@ -118,4 +140,4 @@ def csp_validate(schedule):
         if abs(home - away) >= 1:
             violations.append(f"Team '{team}' has unbalanced home/away: it plays  {home} home vs {away} away")
 
-    return violations        
+    return violations
