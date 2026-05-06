@@ -1,4 +1,4 @@
-import Soft_constraints
+import Minimize_total
 from models import Match , Round , Schedule 
 def total_distance(schedule, dist_Matric, teams):
 
