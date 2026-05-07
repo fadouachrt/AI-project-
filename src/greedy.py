@@ -160,7 +160,7 @@ if __name__ == "__main__":
 
         violations = csp_validate(schedule)
         if not violations:
-            print("  csp_validate: no violations ✓")
+            print("csp_validate: no violations ✓")
         else:
             print(f"  csp_validate: {len(violations)} violation(s):")
             for v in violations:

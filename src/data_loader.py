@@ -21,27 +21,6 @@ DERBIES = {
 
 WEEKEND = {"Saturday", "Sunday"}
 
-def load_derbies(filepath: str) -> set:
-
-    derbies = set()
-    with open(filepath, newline="", encoding="utf-8") as f:
-        reader = csv.DictReader(f)
-        for row in reader:
-            derbies.add(frozenset({row["team_a"].strip(), row["team_b"].strip()}))
-    return derbies
-
-
-def load_derbies_with_priority(filepath: str) -> dict:
-    PRIORITY_MULTIPLIER = {"1": 3, "2": 2, "3": 1}
-    weights = {}
-    with open(filepath, newline="", encoding="utf-8") as f:
-        reader = csv.DictReader(f)
-        for row in reader:
-            pair = frozenset({row["team_a"].strip(), row["team_b"].strip()})
-            multiplier = PRIORITY_MULTIPLIER.get(row["priority"].strip(), 1)
-            weights[pair] = multiplier
-    return weights
-
 # Load teams
 def load_teams(filepath: str) -> list:
     if not os.path.exists(filepath):
