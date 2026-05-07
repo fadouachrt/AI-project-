@@ -1,90 +1,150 @@
-"""
-this is how you can use this file:
+import csv
+import math
+import os
+import sys
 
-from src.data_loader import load_all
-teams_dict, dist_matrix = load_all("data/teams.csv")
-
-"""
-
-
-
-import csv 
-import math 
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from models import Team
-
-
-
-# -- Derby rivals ------
-DERBY_RIVALS = {
-    "MC Alger"      : ["USM Alger", "CR Belouizdad"],
-    "USM Alger"     : ["MC Alger",  "CR Belouizdad"],
-    "CR Belouizdad" : ["MC Alger",  "USM Alger"],
+DERBIES = {
+    # Priority 1 
+    frozenset({"USM Alger",      "MC Alger"}),
+    frozenset({"USM Alger",      "CR Belouizdad"}),
+    frozenset({"MC Alger",       "CR Belouizdad"}),
+    # Priority 2 
+    frozenset({"JS Kabylie",     "Olympique Akbou"}),
+    frozenset({"CS Constantine", "ES Setif"}),
+    # Priority 3 
+    frozenset({"CS Constantine", "USM Khenchela"}),
+    frozenset({"ES Setif",       "USM Khenchela"}),
+    frozenset({"JS Saoura",      "MB Rouissat"}),
 }
 
+WEEKEND = {"Saturday", "Sunday"}
+
+def load_derbies(filepath: str) -> set:
+
+    derbies = set()
+    with open(filepath, newline="", encoding="utf-8") as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            derbies.add(frozenset({row["team_a"].strip(), row["team_b"].strip()}))
+    return derbies
+
+
+def load_derbies_with_priority(filepath: str) -> dict:
+    PRIORITY_MULTIPLIER = {"1": 3, "2": 2, "3": 1}
+    weights = {}
+    with open(filepath, newline="", encoding="utf-8") as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            pair = frozenset({row["team_a"].strip(), row["team_b"].strip()})
+            multiplier = PRIORITY_MULTIPLIER.get(row["priority"].strip(), 1)
+            weights[pair] = multiplier
+    return weights
+
+# Load teams
 def load_teams(filepath: str) -> list:
-    """Read teams.csv → list[Team]. Injects derby_rivals from DERBY_RIVALS."""
+    if not os.path.exists(filepath):
+        raise FileNotFoundError(f"File not found: {filepath}")
+
     teams = []
     with open(filepath, newline="", encoding="utf-8") as f:
-        for row in csv.DictReader(f):
+        reader = csv.DictReader(f)
+        for row in reader:
             name = row["team"].strip()
             teams.append(Team(
-                name=name,
-                lat=float(row["latitude"]),
-                lon=float(row["longitude"]),
-                derby_rivals=DERBY_RIVALS.get(name, [])
-            ))
+                name         = name,
+                lat          = float(row["latitude"]),
+                lon          = float(row["longitude"])
+                ))
     return teams
 
-def haversine(lat1, lon1, lat2, lon2) -> float:
-    """Great-circle distance in km (Haversine formula)."""
-    R = 6_371.0
-    p1, p2 = math.radians(lat1), math.radians(lat2)
-    dp, dl = math.radians(lat2-lat1), math.radians(lon2-lon1)
-    a = math.sin(dp/2)**2 + math.cos(p1)*math.cos(p2)*math.sin(dl/2)**2
-    return round(R * 2 * math.atan2(math.sqrt(a), math.sqrt(1-a)), 2)
+# Haversine formula
+_EARTH_RADIUS_KM = 6_371.0
+def haversine(lat1: float, lon1: float,
+              lat2: float, lon2: float) -> float:
+    phi1 = math.radians(lat1)
+    phi2 = math.radians(lat2)
+    dphi = math.radians(lat2 - lat1)
+    dlam = math.radians(lon2 - lon1)
 
+    a = (math.sin(dphi / 2) ** 2
+         + math.cos(phi1) * math.cos(phi2) * math.sin(dlam / 2) ** 2)
+    c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+
+    return round(_EARTH_RADIUS_KM * c, 2)
+
+
+# Dict-of-dicts distance matrix  
 def build_distance_matrix(teams: list) -> dict:
-    """Build symmetric distance dict keyed by team name strings.
-    Access: dist[match.away.name][match.home.name]"""
     dist = {t.name: {} for t in teams}
+
     for a in teams:
         for b in teams:
-            if a.name == b.name: dist[a.name][b.name] = 0.0
+            if a.name == b.name:
+                dist[a.name][b.name] = 0.0
             elif b.name not in dist[a.name]:
                 d = haversine(a.lat, a.lon, b.lat, b.lon)
-                dist[a.name][b.name] = d; dist[b.name][a.name] = d
+                dist[a.name][b.name] = d
+                dist[b.name][a.name] = d
+
     return dist
 
+
+#Flat tuple-key matrix  (for soft_constraints.total_distance)
+
+def build_flat_matrix(teams: list) -> dict:
+    flat = {}
+    for a in teams:
+        for b in teams:
+            d = haversine(a.lat, a.lon, b.lat, b.lon) if a.name != b.name else 0.0
+            flat[(a.name, b.name)] = d
+    return flat
+
+
+# Convenience wrapper
+
 def load_all(filepath: str) -> tuple:
-    """Returns (list[Team], dist_matrix). One-line import for teammates."""
-    t = load_teams(filepath)
-    return t, build_distance_matrix(t)
+    teams       = load_teams(filepath)
+    dist_matrix = build_distance_matrix(teams)
+    flat_matrix = build_flat_matrix(teams)
+    return teams, dist_matrix, flat_matrix
 
 
-
-# testing functions
-if __name__ == "__main__":
-    import sys, os
-    csv_candidates = [
-        "data/teams.csv",
-        "../data/teams.csv",
-        "teams.csv",
+def verify_distances(dist_matrix: dict) -> None:
+    checks = [
+        ("MC Alger",  "USM Alger",      "~9 km (same city)"),
+        ("MC Alger",  "MC Oran",        "~337 km"),
+        ("MC Alger",  "CS Constantine", "~328 km"),
+        ("MC Alger",  "JS Saoura",      "~739 km"),
+        ("JS Saoura", "CS Constantine", "~971 km"),
     ]
-    csv_path = next((p for p in csv_candidates if os.path.exists(p)), None)
-    if csv_path is None:
-        print("ERROR: teams.csv not found. Run from project root.")
-        sys.exit(1)
- 
-    print(f"Loading teams from: {csv_path}")
-    teams, dist = load_all(csv_path)
- 
- 
-    names = [t.name for t in teams]
-    print("Full distance matrix (km):")
-    header = f"{'':22}" + "".join(f"{n[:10]:>12}" for n in names)
-    print(header)
-    for a in names:
-        row = f"{a[:22]:22}" + "".join(f"{dist[a][b]:>12.1f}" for b in names)
-        print(row)
+    print("\n=== Distance Verification ===")
+    for a, b, note in checks:
+        d = dist_matrix.get(a, {}).get(b, "NOT FOUND")
+        print(f"  {a:<22} → {b:<22}: {d!s:>8} km   (expected {note})")
+    print()
 
 
+# test
+if __name__ == "__main__":
+    candidates = ["data/teams.csv", "../data/teams.csv", "teams.csv"]
+    path = next((p for p in candidates if os.path.exists(p)), None)
+    if path is None:
+        print("ERROR: teams.csv not found.")
+        raise SystemExit(1)
+
+    teams, dist_matrix, flat_matrix = load_all(path)
+
+    print(f"Teams loaded : {len(teams)}")
+
+    verify_distances(dist_matrix)
+
+    print("=== Format check ===")
+    print(f"  dist_matrix['MC Alger']['MC Oran']       = "
+          f"{dist_matrix['MC Alger']['MC Oran']:.1f} km")
+    print(f"  flat_matrix[('MC Alger', 'MC Oran')]     = "
+          f"{flat_matrix[('MC Alger', 'MC Oran')]:.1f} km")
+
+    print(f"\n  DERBIES  = {DERBIES}")
+    print(f"  WEEKEND  = {WEEKEND}")

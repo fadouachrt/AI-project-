@@ -1,3 +1,4 @@
+#schedule.py
 import random 
 from models import Match , Round , Schedule 
 
@@ -51,14 +52,13 @@ def assign_all_days ( schedule ) :
     return schedule
 
 def assign_match_day ( round_obj ) : 
-    derby_matches = [ m for m in round_obj.matches if m.is_derby ]
-    regular_matches = [ m for m in round_obj.matches if not m.is_derby ]
+    matches = round_obj.matches
+    n = len ( matches )
+    saturday_matches = matches [:1]
+    friday_matches = matches[n-2:]
+    third_matches = matches[1:n-2]
     
-    mid = len (regular_matches) // 2 
-    friday_matches = regular_matches [:mid ]
-    third_matches = regular_matches [ mid: ]
-    
-    for match in derby_matches : 
+    for match in saturday_matches : 
         match.day = "Saturday"
     for match in friday_matches : 
         match.day = "Friday"
