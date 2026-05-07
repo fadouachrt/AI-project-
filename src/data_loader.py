@@ -31,7 +31,7 @@ def load_teams(filepath: str) -> list:
                 name=name,
                 lat=float(row["latitude"]),
                 lon=float(row["longitude"]),
-                derby_rivals=DERBY_RIVALS.get(name, [])
+                # derby_rivals=DERBY_RIVALS.get(name, [])
             ))
     return teams
 

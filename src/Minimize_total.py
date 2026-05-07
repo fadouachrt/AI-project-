@@ -1,5 +1,6 @@
-import Soft_constraints
+import Minimize_total
 from models import Match , Round , Schedule 
+from Soft_constraints import Rest_day_penalty,Derbies_penalty
 def total_distance(schedule, dist_Matric, teams):
 
     total = 0
@@ -9,10 +10,10 @@ def total_distance(schedule, dist_Matric, teams):
     for round_obj in schedule.rounds:
         for match in round_obj.matches:
 
-            from_city = current_position[match.away]
-            to_city = match.home
+            from_city = current_position[match.away.name]
+            to_city = match.home.name
 
-            total += dist_Matric[(from_city, to_city)]
+            total += dist_Matric[from_city][ to_city]
 
             current_position[match.away] = match.home
             current_position[match.home] = match.home

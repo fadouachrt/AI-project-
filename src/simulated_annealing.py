@@ -1,12 +1,27 @@
 import math
 import random
 from neighbour import generate_one_random_neighbor
-from fixed_version import cost_function
+from Minimize_total import cost_function
 from models import Match, Schedule
 from copy import deepcopy
-from schedule import double_round_robin
+from schedule import double_round_robin ,assign_all_days
 from data_loader import load_all,build_distance_matrix
 import csv
+
+
+def load_derbies(file_path):
+    derbies = set()
+
+    with open(file_path, "r", encoding="utf-8") as f:
+        reader = csv.DictReader(f)
+
+        for row in reader:
+            team_a = row["team_a"]
+            team_b = row["team_b"]
+
+            derbies.add(frozenset([team_a, team_b]))
+
+    return derbies
 
 def simulated_annealing(schedule ,distances ,derbies ,weekends,teams,T_start ,T_min ,alpha ,max_iteration, cost_fn=None):
     T = T_start
@@ -17,7 +32,6 @@ def simulated_annealing(schedule ,distances ,derbies ,weekends,teams,T_start ,T_
     it=0
     history = [] #track improvment of cost
     while it < max_iteration and T > T_min:
-        
         neighbor = generate_one_random_neighbor(current)
         neighbor_cost = cost_fn(neighbor,teams,distances,derbies,weekends)
         delta = neighbor_cost - current_cost
@@ -45,32 +59,26 @@ def simulated_annealing(schedule ,distances ,derbies ,weekends,teams,T_start ,T_
 
 
 if __name__ == "__main__":
-    # 1. Load data
-    teams_dict, distances = load_all("../data/teams.csv")
-    teams = list(teams_dict.keys())
-
-    # 2. Build distances
-    distances = build_distance_matrix(teams_dict)
-
-    # 3. Load derbies correctly
-    with open("../data/derbies.csv") as f:
-        reader = csv.reader(f)
-        next(reader)  
-        derbies = {frozenset([row[0].strip(), row[1].strip()]) for row in reader}
-    # 4. Generate initial schedule
-    schedule = double_round_robin(teams)
+    teamms , distances = load_all("../data/teams.csv")
+    WEEKEND_DAYS = {"Friday", "Saturday"}
+    derbie= load_derbies("../data/derbies.csv")
+    
+    schedulle = double_round_robin(teamms)
+    shechdual = assign_all_days(schedulle)
+    print(cost_function(shechdual,teamms,distances,derbie,WEEKEND_DAYS))
     
     best, best_cost, history = simulated_annealing(
-        schedule = schedule,
+        schedule = shechdual,
         distances = distances,
-        derbies = derbies,
-        weekends =["Friday","Saturday"],
-        teams = teams,
-        T_start = 10000,
+        derbies = derbie,
+        weekends = WEEKEND_DAYS,
+        teams = teamms,
+        T_start = 5000,
         T_min = 0.1,
-        alpha = 0.995,
+        alpha = 0.999,
         max_iteration = 5000,
         cost_fn=cost_function
     )
     print(f"\nBest schedule found (cost={best_cost}):")
-    best.print_schedule()
+    
+    

@@ -65,4 +65,8 @@ def assign_match_day ( round_obj ) :
         match.day = round_obj.third_day 
         
         
-        
+#fuction to generate complete schedual
+def generate_schedule(teams):
+    Schedule_v = double_round_robin(teams)
+    final_Schedule = assign_all_days(Schedule_v)
+    return final_Schedule
