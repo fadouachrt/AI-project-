@@ -65,4 +65,3 @@ def assign_match_day ( round_obj ) :
         match.day = round_obj.third_day 
         
         
-        

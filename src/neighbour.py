@@ -113,5 +113,4 @@ def generate_one_random_neighbor(schedule):
          
          
 
-    
-    
+ 
