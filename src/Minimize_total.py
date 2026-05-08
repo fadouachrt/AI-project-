@@ -15,8 +15,8 @@ def total_distance(schedule, dist_Matric, teams):
 
             total += dist_Matric[from_city][ to_city]
 
-            current_position[match.away] = match.home
-            current_position[match.home] = match.home
+            current_position[match.away.name] = match.home.name
+            current_position[match.home.name] = match.home.name
 
     return total
 

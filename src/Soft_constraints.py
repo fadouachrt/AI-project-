@@ -8,7 +8,7 @@ def Derbies_penalty(schedule, derbies, weekend, penalty=500):
     for round_obj in schedule.rounds:
         for match in round_obj.matches:
 
-            match_pair = frozenset([match.home, match.away])
+            match_pair = frozenset([match.home.name, match.away.name])
 
             if match_pair in derbies and match.day not in weekend:
                 total += penalty
@@ -23,7 +23,9 @@ def Rest_day_penalty(schedule, teams, penalty=500):
     match_days = {
         "Friday": 0,
         "Saturday": 1,
-        "Sunday": 2
+        "Sunday": 2,
+        "Wednesday": 3,
+        "Thursday": 4
     }
 
     total = 0
@@ -35,7 +37,7 @@ def Rest_day_penalty(schedule, teams, penalty=500):
         for round_obj in schedule.rounds:
             for match in round_obj.matches:
 
-                if team.name == match.home or team.name == match.away:
+                if team.name == match.home.name or team.name == match.away.name:
                     team_match_day.append(match.day)
 
         for i in range(len(team_match_day) - 1):
