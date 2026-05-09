@@ -75,14 +75,11 @@ if __name__ == "__main__":
         teams = teamms,
         T_start = 10000,
         T_min = 0.1,
-        alpha = 0.995,
+        alpha = 0.999,
         max_iteration = 20000,
         cost_fn=cost_function
     )
     print(f"\nBest schedule found (cost={best_cost}):")
-    print("=========schedual before========")
-    shechdual.print_schedule()
-    print("=========schedual after========")
-    best.print_schedule()
+ 
     
     

@@ -1,80 +1,130 @@
 import sys
 import os
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
+
+import math
 import streamlit as st
-import folium  
+import folium
 from streamlit_folium import st_folium
-import pandas as pd
-# from src.simulated_annealing import simulated_annealing
-# from src.schedule import double_round_robin
-# from src.fixed_version import build_dict_matrix
-# from src.data_loader import load_teams
+from simulated_annealing import simulated_annealing, load_derbies
+from schedule import double_round_robin, assign_all_days
+from data_loader import load_all
+from Minimize_total import cost_function
 
 
-teams = pd.read_csv("../data/teams.csv")
-# derbies = pd.read_csv("data/derbies.csv")
-# def get_team_route(team_name,schedule,teams):
-#     route=[]
-#     for round in schedule.rounds:
-#         matches = round.matches
-#         for match in matches :
-#             if match.home == team_name:
-#                 row = teams[teams["team"] == team_name]
-#                 lat = row["latitude"].values[0]
-#                 lon = row["longitude"].values[0]
-#                 route.append((lat,lon))
-#                 break
-#             elif match.away == team_name:
-#                 opp=match.home
-#                 row = teams[teams["team"] == opp]
-#                 lat = row["latitude"].values[0]
-#                 lon = row["longitude"].values[0]
-#                 route.append((lat,lon))
-#                 break
-#     return route
-# teamms = load_teams("data/teams.csv")  
-# schedule = double_round_robin(teamms)
-# distances=build_dict_matrix(teamms)
-# schedule = simulated_annealing(
-#         schedule      = schedule,
-#         distances     = distances,
-#         derbies       = derbies,
-#         weekends      =["Friday","Saturday"],
-#         teams          = teamms,
-#         T_start       = 10000,
-#         T_min         = 0.1,
-#         alpha         = 0.995,
-#         max_iteration = 5000
-# )
+@st.cache_resource
+def run_optimization():
+    teams, distances = load_all("data/teams.csv")
+    derbies = load_derbies("data/derbies.csv")
+    WEEKEND_DAYS = {"Friday", "Saturday"}
+    schedule = double_round_robin(teams)
+    schedule = assign_all_days(schedule)
+    best, best_cost, history = simulated_annealing(
+        schedule, distances, derbies, WEEKEND_DAYS,
+        teams, 10000, 0.1, 0.999, 20000, cost_function
+    )
+    return teams, best, best_cost
 
 
-m = folium.Map(
-location=[28.0, 2.5],  # center of Algeria
-zoom_start=5,
-tiles="CartoDB dark_matter"
-)
-    
-for _, row in teams.iterrows():
+def get_team_route(team_name, schedule):
+    home_team = None
+    for round_obj in schedule.rounds:
+        for match in round_obj.matches:
+            if match.home.name == team_name:
+                home_team = match.home
+                break
+            elif match.away.name == team_name:
+                home_team = match.away
+                break
+        if home_team:
+            break
+
+    if not home_team:
+        return [], 0
+
+    current = (home_team.lat, home_team.lon)
+    route = [current]
+    total_dist = 0
+
+    for round_obj in schedule.rounds:
+        dest = None
+        for match in round_obj.matches:
+            if match.home.name == team_name:
+                # playing at home → stay at home city
+                dest = (match.home.lat, match.home.lon)
+                break
+            elif match.away.name == team_name:
+                # playing away → travel to opponent's city
+                dest = (match.home.lat, match.home.lon)
+                break
+
+        if dest is None:
+            continue  # team has no match this round (shouldn't happen)
+
+        # always compute distance and append, even if staying home
+        dlat = current[0] - dest[0]
+        dlon = (current[1] - dest[1]) * math.cos(math.radians((current[0] + dest[0]) / 2))
+        total_dist += math.sqrt(dlat**2 + dlon**2) * 111
+
+        route.append(dest)
+        current = dest
+
+    # return home at end of season
+    home_coords = (home_team.lat, home_team.lon)
+    if current != home_coords:
+        dlat = current[0] - home_coords[0]
+        dlon = (current[1] - home_coords[1]) * math.cos(math.radians((current[0] + home_coords[0]) / 2))
+        total_dist += math.sqrt(dlat**2 + dlon**2) * 111
+        route.append(home_coords)
+
+    return route, total_dist
+
+
+# ── Run once ────────────────────────────────────────────────
+with st.spinner("Optimizing schedule... (first load only)"):
+    teams, best, best_cost = run_optimization()
+
+st.title("🏟️ Algerian Ligue 1 – Season Schedule Map")
+st.metric("Optimized Season Cost", f"{best_cost:,.0f} km")
+
+# ── Team selector ────────────────────────────────────────────
+team_names = [t.name for t in teams]
+selected_team = st.selectbox("Select a team to view its travel route:", team_names)
+
+# ── Build map ────────────────────────────────────────────────
+m = folium.Map(location=[28.0, 2.5], zoom_start=5, tiles="CartoDB dark_matter")
+
+# Draw all team stadiums
+for team in teams:
     folium.CircleMarker(
-        location=[row["latitude"], row["longitude"]],
+        location=[team.lat, team.lon],
         radius=8,
         color="#c8ff00",
         fill=True,
         fill_color="#c8ff00",
         fill_opacity=0.8,
-        tooltip=row["team"],    # hover text
-        popup=row["stadium"]     # click text
+        tooltip=team.name,
     ).add_to(m)
 
-# team_name ="USM"
-# if schedule is not None:
-#     route_coords = get_team_route(team_name,schedule,teams)
-#     folium.PolyLine(
-#         locations = route_coords,
-#         color="#c8ff00",
-#         weight = 2,
-#         opacity = 0.7,
-#         tooltip =f"{team_name}travel route"
-#     ).add_to(m)
-st_folium(m, width=700, height=500)
+# Draw selected team's route
+route_coords, total_km = get_team_route(selected_team, best)
 
+if route_coords:
+    folium.PolyLine(
+        locations=route_coords,
+        color="#ff4444",
+        weight=2,
+        opacity=0.8,
+        tooltip=f"{selected_team} — total travel: {total_km:,.0f} km"
+    ).add_to(m)
+
+    # Mark home stadium
+    folium.Marker(
+        location=route_coords[0],
+        tooltip=f"{selected_team} — Home Stadium",
+        icon=folium.Icon(color="red", icon="home")
+    ).add_to(m)
+
+    st.info(f"🚌 **{selected_team}** travels **{total_km:,.0f} km** across the season ({len(route_coords)-1} trips)")
+
+st_folium(m, width=900, height=550)
