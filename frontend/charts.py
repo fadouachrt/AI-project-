@@ -25,6 +25,17 @@ with open("../data/derbies.csv") as f:
         for row in reader
     }
 
+team_names = [t.name for t in teams]
+
+# just to control
+st.sidebar.header("Settings")
+n_teams = st.sidebar.slider(
+    "Number of teams",
+    min_value=2,
+    max_value=len(team_names),
+    value=len(team_names),   
+)
+team_names = team_names[:n_teams]   
 
 initial_schedule = double_round_robin(team_names)
 
