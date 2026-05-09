@@ -130,7 +130,7 @@ def validate_schedule(schedule: Schedule) -> dict:
 # test by claude
 if __name__ == "__main__":
     sys.path.insert(0, os.path.dirname(__file__))
-    from data_loader import load_all, DERBIES, WEEKEND
+    from data_loader import load_all
 
     candidates = ["data/teams.csv", "../data/teams.csv", "teams.csv"]
     path = next((p for p in candidates if os.path.exists(p)), None)
@@ -172,8 +172,6 @@ if __name__ == "__main__":
     print("\n=== flat_matrix format (for Douaa's cost_function) ===")
     print(f"  flat_matrix[('MC Alger', 'MC Oran')] = "
           f"{flat_matrix[('MC Alger', 'MC Oran')]:.1f} km")
-    print(f"  DERBIES  = {DERBIES}")
-    print(f"  WEEKEND  = {WEEKEND}")
 
     # ── Summary ────────────────────────────────────────────────────
     km = compute_total_travel(schedule, dist_matrix)
