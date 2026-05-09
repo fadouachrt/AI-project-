@@ -360,4 +360,6 @@ if __name__ == "__main__":
     for r, rnd in enumerate(schedule[:3]):
         print(f"\n  Round {r+1}:")
         for h, a, d in rnd:
+
             print(f"    {h:<26} vs  {a:<26} [{d}]")
+

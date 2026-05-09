@@ -31,7 +31,6 @@ def load_teams(filepath: str) -> list:
                 name=name,
                 lat=float(row["latitude"]),
                 lon=float(row["longitude"]),
-                # derby_rivals=DERBY_RIVALS.get(name, [])
             ))
     return teams
 
@@ -86,5 +85,3 @@ if __name__ == "__main__":
     for a in names:
         row = f"{a[:22]:22}" + "".join(f"{dist[a][b]:>12.1f}" for b in names)
         print(row)
-
-

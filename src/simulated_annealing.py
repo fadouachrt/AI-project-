@@ -32,6 +32,7 @@ def simulated_annealing(schedule ,distances ,derbies ,weekends,teams,T_start ,T_
     it=0
     history = [] #track improvment of cost
     while it < max_iteration and T > T_min:
+
         neighbor = generate_one_random_neighbor(current)
         neighbor_cost = cost_fn(neighbor,teams,distances,derbies,weekends)
         delta = neighbor_cost - current_cost
@@ -59,6 +60,7 @@ def simulated_annealing(schedule ,distances ,derbies ,weekends,teams,T_start ,T_
 
 
 if __name__ == "__main__":
+
     teamms , distances = load_all("../data/teams.csv")
     WEEKEND_DAYS = {"Friday", "Saturday"}
     derbie= load_derbies("../data/derbies.csv")
@@ -83,3 +85,4 @@ if __name__ == "__main__":
  
     
     
+
