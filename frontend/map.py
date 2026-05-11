@@ -27,57 +27,36 @@ def run_optimization():
 
 
 def get_team_route(team_name, schedule):
-    home_team = None
+    home_coords = None
     for round_obj in schedule.rounds:
         for match in round_obj.matches:
             if match.home.name == team_name:
-                home_team = match.home
+                home_coords = (match.home.lat, match.home.lon)
                 break
             elif match.away.name == team_name:
-                home_team = match.away
+                home_coords = (match.away.lat, match.away.lon)
                 break
-        if home_team:
+        if home_coords:
             break
 
-    if not home_team:
-        return [], 0
+    if not home_coords:
+        return []
 
-    current = (home_team.lat, home_team.lon)
-    route = [current]
-    total_dist = 0
+    route = [home_coords]
 
     for round_obj in schedule.rounds:
-        dest = None
         for match in round_obj.matches:
-            if match.home.name == team_name:
-                # playing at home → stay at home city
+            if match.home.name == team_name or match.away.name == team_name:
                 dest = (match.home.lat, match.home.lon)
-                break
-            elif match.away.name == team_name:
-                # playing away → travel to opponent's city
-                dest = (match.home.lat, match.home.lon)
+                # only append if location actually changed
+                if dest != route[-1]:
+                    route.append(dest)
                 break
 
-        if dest is None:
-            continue  # team has no match this round (shouldn't happen)
-
-        # always compute distance and append, even if staying home
-        dlat = current[0] - dest[0]
-        dlon = (current[1] - dest[1]) * math.cos(math.radians((current[0] + dest[0]) / 2))
-        total_dist += math.sqrt(dlat**2 + dlon**2) * 111
-
-        route.append(dest)
-        current = dest
-
-    # return home at end of season
-    home_coords = (home_team.lat, home_team.lon)
-    if current != home_coords:
-        dlat = current[0] - home_coords[0]
-        dlon = (current[1] - home_coords[1]) * math.cos(math.radians((current[0] + home_coords[0]) / 2))
-        total_dist += math.sqrt(dlat**2 + dlon**2) * 111
+    if route[-1] != home_coords:
         route.append(home_coords)
 
-    return route, total_dist
+    return route
 
 
 # ── Run once ────────────────────────────────────────────────
@@ -107,7 +86,15 @@ for team in teams:
     ).add_to(m)
 
 # Draw selected team's route
-route_coords, total_km = get_team_route(selected_team, best)
+route_coords = get_team_route(selected_team, best)
+# st.write(f"Total route points: {len(route_coords)}")
+# st.write(route_coords)
+
+# st.write("=== Matches per round ===")
+# for round_obj in best.rounds:
+#     for match in round_obj.matches:
+#         if match.home.name == selected_team or match.away.name == selected_team:
+#             st.write(f"Round {round_obj.round_index+1}: {match.home.name} vs {match.away.name} → stadium: ({match.home.lat}, {match.home.lon})")
 
 if route_coords:
     folium.PolyLine(
@@ -115,7 +102,7 @@ if route_coords:
         color="#ff4444",
         weight=2,
         opacity=0.8,
-        tooltip=f"{selected_team} — total travel: {total_km:,.0f} km"
+        # tooltip=f"{selected_team} — total travel: {total_km:,.0f} km"
     ).add_to(m)
 
     # Mark home stadium
@@ -125,6 +112,6 @@ if route_coords:
         icon=folium.Icon(color="red", icon="home")
     ).add_to(m)
 
-    st.info(f"🚌 **{selected_team}** travels **{total_km:,.0f} km** across the season ({len(route_coords)-1} trips)")
+    # st.info(f"🚌 **{selected_team}** travels **{total_km:,.0f} km** across the season ({len(route_coords)-1} trips)")
 
 st_folium(m, width=900, height=550)

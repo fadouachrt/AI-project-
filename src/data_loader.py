@@ -14,7 +14,7 @@ from models import Team
 
 
 
-# -- Derby rivals ------
+# -- Derby rivals------
 DERBY_RIVALS = {
     "MC Alger"      : ["USM Alger", "CR Belouizdad"],
     "USM Alger"     : ["MC Alger",  "CR Belouizdad"],

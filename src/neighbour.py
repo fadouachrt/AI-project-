@@ -90,16 +90,16 @@ def generate_all_neighbours(schedule):
             yield swap_third_day(schedule, i, j)    
 def generate_one_random_neighbor(schedule):
     n = len(schedule.rounds)
-    move = random.choice([1, 2, 3, 4])
+    move = random.choice([1, 3, 4])
 
     if move == 1:
         i, j = random.sample(range(n), 2)
         return swap_rounds(schedule, i, j)
 
-    elif move == 2:
-        i = random.randint(0, n - 1)
-        m_idx = random.randint(0, len(schedule.rounds[i].matches) - 1)
-        return swap_home_away(schedule, i, m_idx)
+    # elif move == 2:
+    #     i = random.randint(0, n - 1)
+    #     m_idx = random.randint(0, len(schedule.rounds[i].matches) - 1)
+    #     return swap_home_away(schedule, i, m_idx)
 
     elif move == 3:
         i = random.randint(0, n - 1)
