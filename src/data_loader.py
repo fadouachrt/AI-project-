@@ -5,21 +5,20 @@ import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from models import Team
-DERBIES = {
-    # Priority 1 
-    frozenset({"USM Alger",      "MC Alger"}),
-    frozenset({"USM Alger",      "CR Belouizdad"}),
-    frozenset({"MC Alger",       "CR Belouizdad"}),
-    # Priority 2 
-    frozenset({"JS Kabylie",     "Olympique Akbou"}),
-    frozenset({"CS Constantine", "ES Setif"}),
-    # Priority 3 
-    frozenset({"CS Constantine", "USM Khenchela"}),
-    frozenset({"ES Setif",       "USM Khenchela"}),
-    frozenset({"JS Saoura",      "MB Rouissat"}),
-}
 
-WEEKEND = {"Saturday", "Sunday"}
+def load_derbies(file_path):
+    derbies = set()
+    with open(file_path, "r", encoding="utf-8") as f:
+        reader = csv.DictReader(f)
+
+        for row in reader:
+            team_a = row["team_a"]
+            team_b = row["team_b"]
+
+            derbies.add(frozenset([team_a, team_b]))
+
+    return derbies
+
 
 # Load teams
 def load_teams(filepath: str) -> list:
@@ -70,24 +69,13 @@ def build_distance_matrix(teams: list) -> dict:
     return dist
 
 
-#Flat tuple-key matrix  (for soft_constraints.total_distance)
-
-def build_flat_matrix(teams: list) -> dict:
-    flat = {}
-    for a in teams:
-        for b in teams:
-            d = haversine(a.lat, a.lon, b.lat, b.lon) if a.name != b.name else 0.0
-            flat[(a.name, b.name)] = d
-    return flat
-
 
 # Convenience wrapper
 
 def load_all(filepath: str) -> tuple:
     teams       = load_teams(filepath)
     dist_matrix = build_distance_matrix(teams)
-    flat_matrix = build_flat_matrix(teams)
-    return teams, dist_matrix, flat_matrix
+    return teams, dist_matrix
 
 
 def verify_distances(dist_matrix: dict) -> None:
@@ -113,7 +101,7 @@ if __name__ == "__main__":
         print("ERROR: teams.csv not found.")
         raise SystemExit(1)
 
-    teams, dist_matrix, flat_matrix = load_all(path)
+    teams, dist_matrix = load_all(path)
 
     print(f"Teams loaded : {len(teams)}")
 
@@ -122,8 +110,6 @@ if __name__ == "__main__":
     print("=== Format check ===")
     print(f"  dist_matrix['MC Alger']['MC Oran']       = "
           f"{dist_matrix['MC Alger']['MC Oran']:.1f} km")
-    print(f"  flat_matrix[('MC Alger', 'MC Oran')]     = "
-          f"{flat_matrix[('MC Alger', 'MC Oran')]:.1f} km")
 
-    print(f"\n  DERBIES  = {DERBIES}")
-    print(f"  WEEKEND  = {WEEKEND}")
+
+
