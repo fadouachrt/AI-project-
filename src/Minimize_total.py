@@ -1,6 +1,8 @@
+
 import Minimize_total
 from models import Match , Round , Schedule 
-from Soft_constraints import Rest_day_penalty,Derbies_penalty
+from Soft_constraints import Rest_day_penalty,Derbies_penalty,successive_away_penalty
+
 def total_distance(schedule, dist_Matric, teams):
     total = 0
     current_position = {team.name: team.name for team in teams}
@@ -20,8 +22,6 @@ def total_distance(schedule, dist_Matric, teams):
 
 
 
-
-
 def cost_function(schedule, teams, dict_Matric, derbies, weekend, penalty=500):
 
     total_cost = 0
@@ -29,5 +29,8 @@ def cost_function(schedule, teams, dict_Matric, derbies, weekend, penalty=500):
     total_cost += total_distance(schedule, dict_Matric, teams)
     total_cost += Rest_day_penalty(schedule, teams, penalty)
     total_cost += Derbies_penalty(schedule, derbies, weekend, penalty)
+    for team in teams:
+        total_cost+=successive_away_penalty(team, schedule, penalty)
 
+    
     return total_cost
