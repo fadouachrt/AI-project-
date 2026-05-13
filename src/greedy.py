@@ -139,7 +139,7 @@ if __name__ == "__main__":
 
     sys.path.insert(0, os.path.dirname(__file__))
     from data_loader import load_all, load_derbies
-    from soft_constraints import Derbies_penalty, Rest_day_penalty, successive_away_penalty
+    from Soft_constraints import Derbies_penalty, Rest_day_penalty, successive_away_penalty
     PENALTY    = 500
     WEEKENDS   = {"Friday", "Saturday"}
     # ── Load ───────────────────────────────────────────────────────

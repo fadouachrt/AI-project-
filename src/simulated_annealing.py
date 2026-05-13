@@ -75,9 +75,9 @@ if __name__ == "__main__":
         derbies = derbie,
         weekends = WEEKEND_DAYS,
         teams = teamms,
-        T_start = 10_000,
+        T_start = 10000,
         T_min = 0.1,
-        alpha = 0.999,
+        alpha = 0.995,
         max_iteration = 20000,
         cost_fn=cost_function
     )
