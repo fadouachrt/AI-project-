@@ -1,318 +1,218 @@
-# test_pure_csp.py
-import time
+
+
+from __future__ import annotations
+
+import argparse
+import os
 import sys
-from data_loader import load_teams, build_distance_matrix, DERBIES, WEEKEND
-from csp_solver import CSPScheduler
-import csv
+import time
+from typing import Dict, List, Optional, Set, Tuple
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+from models import Team
+from constraints import is_valid, csp_validate
+from csp_solver import csp_solver
+from data_loader import DERBIES, WEEKEND, build_flat_matrix, load_teams
+from Minimize_total import cost_function
+
+# Max wall-clock per league size (seconds)
+TIME_LIMIT_SEC = 20 * 60
+
+# Sizes to benchmark (even teams only for this CSP)
+BENCHMARK_NS = (10, 12, 14, 16, 18, 20)
+
+# Print full round-by-round schedule only for these sizes (large output)
+FULL_SCHEDULE_NS = frozenset({10, 12})
 
 
-def convert_to_schedule_format(schedule_result, teams):
-    """
-    Convert the CSP result to a readable schedule format
-    """
-    if schedule_result is None:
-        return None
-    
-    n = len(teams)
-    rounds = schedule_result.by_round
-    
-    print(f"\n{'='*80}")
-    print(f"COMPLETE SCHEDULE - {n} Teams - Double Round Robin")
-    print(f"{'='*80}")
-    
-    # Create team name mapping (index -> team name)
-    team_names = [t.name for t in teams]
-    
-    total_matches = 0
-    
-    for round_idx, matches in enumerate(rounds):
-        print(f"\n{'─'*60}")
-        print(f"ROUND {round_idx + 1} of {len(rounds)}")
-        print(f"{'─'*60}")
-        
-        for match_idx, (home_idx, away_idx) in enumerate(sorted(matches), 1):
-            home_name = team_names[home_idx]
-            away_name = team_names[away_idx]
-            print(f"  Match {match_idx:2}: {home_name:25} vs {away_name:25}")
-            total_matches += 1
-    
-    print(f"\n{'='*80}")
-    print(f"SUMMARY:")
-    print(f"  Total rounds: {len(rounds)}")
-    print(f"  Total matches: {total_matches}")
-    print(f"  Expected rounds: {(n - 1) * 2}")
-    print(f"  Expected matches: {n * (n - 1)}")
-    print(f"{'='*80}")
-    
-    return schedule_result
+def _find_teams_csv() -> str:
+    candidates = [
+        os.path.join(os.path.dirname(__file__), "data", "teams.csv"),
+        os.path.join(os.path.dirname(__file__), "teams.csv"),
+        "data/teams.csv",
+        "teams.csv",
+    ]
+    for p in candidates:
+        if os.path.isfile(p):
+            return p
+    raise FileNotFoundError("teams.csv not found (tried data/teams.csv and ./teams.csv).")
 
 
-def test_csp_with_real_teams():
-    """Test the pure CSP solver with real Algerian teams"""
-    
-    print("\n" + "="*80)
-    print("PURE CSP SOLVER TEST - Real Algerian Teams")
-    print("="*80)
-    
-    # Load real teams
-    try:
-        teams = load_teams("teams.csv")
-        print(f"\n✓ Loaded {len(teams)} real Algerian teams:")
-        for i, team in enumerate(teams[:8]):
-            print(f"    {i}: {team.name}")
-        if len(teams) > 8:
-            print(f"    ... and {len(teams) - 8} more")
-    except FileNotFoundError:
-        print("❌ teams.csv not found!")
-        return None
-    except Exception as e:
-        print(f"❌ Error loading teams: {e}")
-        return None
-    
-    # Test different team sizes
-    test_sizes = [4, 6, 8]  # Pure CSP only works for small sizes
-    
-    results = {}
-    
-    for size in test_sizes:
-        if size > len(teams):
-            print(f"\n⚠ Cannot test {size} teams: only {len(teams)} available")
-            continue
-        
-        print(f"\n{'#'*80}")
-        print(f"TESTING: {size} TEAMS")
-        print(f"{'#'*80}")
-        
-        # Show which teams are being used
-        test_teams = teams[:size]
-        print(f"\nTeams participating:")
-        for i, team in enumerate(test_teams):
-            print(f"  {i}: {team.name}")
-        
-        # Run CSP solver
-        print(f"\n⏳ Running pure CSP solver...")
-        print(f"  Variables: {size} teams → {size * (size - 1)} ordered pairs")
-        print(f"  Rounds: {(size - 1) * 2}")
-        print(f"  Domain size per variable: {(size - 1) * 2}")
-        print(f"  Time limit: 60 seconds")
-        
-        start_time = time.time()
-        
-        try:
-            # Create CSP solver
-            scheduler = CSPScheduler(
-                n_teams=size,
-                time_limit=60.0,
-                verbose=True
+def make_n_teams(n: int, csv_path: str) -> List[Team]:
+    """Use first n teams from CSV; pad with synthetic teams if the file has fewer than n."""
+    loaded = load_teams(csv_path)
+    if len(loaded) >= n:
+        return loaded[:n]
+    teams = list(loaded)
+    base = len(teams)
+    for i in range(base, n):
+        teams.append(
+            Team(
+                name=f"Synthetic_{i + 1}",
+                lat=36.35 + (i % 7) * 0.15,
+                lon=3.08 + (i // 7) * 0.12,
             )
-            
-            # Solve
-            schedule_result = scheduler.solve()
-            
-            elapsed = time.time() - start_time
-            
-            if schedule_result:
-                print(f"\n✅ SUCCESS! Solution found in {elapsed:.2f} seconds")
-                print(f"   Backtracking nodes explored: {scheduler._nodes}")
-                print(f"   Is valid: {schedule_result.is_valid()}")
-                
-                # Display the schedule
-                convert_to_schedule_format(schedule_result, test_teams)
-                
-                results[size] = {
-                    "success": True,
-                    "time": elapsed,
-                    "nodes": scheduler._nodes,
-                    "valid": schedule_result.is_valid()
-                }
-            else:
-                print(f"\n❌ FAILED! No solution found in {elapsed:.2f} seconds")
-                print(f"   Backtracking nodes explored: {scheduler._nodes}")
-                
-                results[size] = {
-                    "success": False,
-                    "time": elapsed,
-                    "nodes": scheduler._nodes,
-                    "valid": False
-                }
-                
-        except Exception as e:
-            elapsed = time.time() - start_time
-            print(f"\n❌ ERROR: {str(e)}")
-            results[size] = {
-                "success": False,
-                "time": elapsed,
-                "error": str(e)
-            }
-    
-    # Print summary
-    print("\n" + "="*80)
-    print("TEST SUMMARY - Pure CSP Solver")
-    print("="*80)
-    
-    print("\n| Teams | Status    | Time (s) | Nodes | Valid |")
-    print("|-------|-----------|----------|-------|-------|")
-    
-    for size in test_sizes:
-        if size in results:
-            r = results[size]
-            if r.get("success"):
-                status = "✅ WORKS"
-                time_str = f"{r['time']:8.2f}"
-                nodes_str = str(r.get('nodes', '-'))
-                valid_str = "✓" if r.get('valid') else "✗"
-            else:
-                status = "❌ FAILS"
-                time_str = f"{r['time']:8.2f}"
-                nodes_str = "-"
-                valid_str = "-"
-            
-            print(f"| {size:5} | {status:9} | {time_str} | {nodes_str:5} | {valid_str:5} |")
-    
-    print("\n" + "="*80)
-    print("CONCLUSION")
-    print("="*80)
-    print("Pure CSP Solver Limitations:")
-    print("  - Works for n ≤ 6 teams")
-    print("  - Fails for n ≥ 8 teams due to combinatorial explosion")
-    print("  - Search space grows exponentially: (2*(n-1))^(n*(n-1))")
-    print("\nFor n > 6, a hybrid approach (canonical schedule + local search) is required.")
-    
-    return results
-
-
-def test_specific_size(size, time_limit=120):
-    """Test a specific team size"""
-    print(f"\n{'='*80}")
-    print(f"TESTING SPECIFIC SIZE: {size} TEAMS")
-    print(f"{'='*80}")
-    
-    # Load teams
-    try:
-        teams = load_teams("teams.csv")
-        if size > len(teams):
-            print(f"⚠ Only {len(teams)} teams available. Using synthetic teams for remaining.")
-            # Generate synthetic teams
-            from models import Team
-            for i in range(len(teams), size):
-                teams.append(Team(f"Synthetic_{i+1}", 36.0 + i*0.1, 3.0 + i*0.1))
-    except:
-        # Generate all synthetic teams
-        from models import Team
-        teams = [Team(f"Team_{i+1}", 36.0 + i*0.1, 3.0 + i*0.1) for i in range(size)]
-    
-    print(f"\nRunning CSP solver for {size} teams...")
-    print(f"  This may take a long time for n > 6")
-    
-    start_time = time.time()
-    
-    scheduler = CSPScheduler(
-        n_teams=size,
-        time_limit=time_limit,
-        verbose=True
-    )
-    
-    result = scheduler.solve()
-    
-    elapsed = time.time() - start_time
-    
-    if result:
-        print(f"\n✅ SOLUTION FOUND in {elapsed:.2f}s")
-        print(f"   Nodes explored: {scheduler._nodes}")
-        print(f"   Valid: {result.is_valid()}")
-        
-        # Display full schedule
-        team_names = [f"Team_{i}" for i in range(size)]
-        convert_to_schedule_format(result, team_names)
-        
-        return result
-    else:
-        print(f"\n❌ NO SOLUTION in {elapsed:.2f}s")
-        print(f"   Nodes explored: {scheduler._nodes}")
-        return None
-
-
-def run_scalability_test():
-    """Test scalability limits of pure CSP"""
-    print("\n" + "="*80)
-    print("PURE CSP SCALABILITY TEST")
-    print("="*80)
-    print("\nThis test will determine the maximum team size")
-    print("that pure CSP can solve within 60 seconds.\n")
-    
-    test_sizes = [4, 6, 8, 10]
-    results = []
-    
-    for size in test_sizes:
-        print(f"\n{'─'*60}")
-        print(f"Testing {size} teams...")
-        
-        start_time = time.time()
-        
-        scheduler = CSPScheduler(
-            n_teams=size,
-            time_limit=60.0,
-            verbose=False
         )
-        
-        result = scheduler.solve()
-        
-        elapsed = time.time() - start_time
-        
-        success = result is not None
-        nodes = scheduler._nodes if scheduler else 0
-        
-        results.append({
-            "size": size,
-            "success": success,
-            "time": elapsed,
-            "nodes": nodes
-        })
-        
-        if success:
-            print(f"  ✅ SOLVED in {elapsed:.2f}s ({nodes} nodes)")
+    return teams
+
+
+def derbies_relevant(teams: List[Team], derby_source: Set[frozenset]) -> Set[frozenset]:
+    names = {t.name for t in teams}
+    return {d for d in derby_source if d <= names}
+
+
+def print_full_schedule(schedule, title: str = "COMPLETE SCHEDULE") -> None:
+    print("\n" + "=" * 80)
+    print(title)
+    print("=" * 80)
+    for round_obj in schedule.rounds:
+        print(f"\n{'─' * 70}")
+        print(f"ROUND {round_obj.round_index + 1}  (days in round: {round_obj.days})")
+        print(f"{'─' * 70}")
+        for match in round_obj.matches:
+            day_str = f"  [{match.day}]" if match.day else ""
+            print(f"  {match.home.name:28} vs {match.away.name:28}{day_str}")
+    print("\n" + "=" * 80)
+
+
+def print_results_table(rows: List[Tuple[int, float, str, Optional[float]]]) -> None:
+    """
+    rows: (n_teams, elapsed_sec, status, total_cost or None)
+    status: OK | NO_SCHEDULE_IN_TIME | INVALID
+    """
+    print("\n")
+    print("=" * 88)
+    print("BENCHMARK SUMMARY  (time limit per size: 20 minutes)")
+    print("=" * 88)
+    w_n, w_t, w_s, w_c = 6, 14, 28, 18
+    header = (
+        f"| {'n':^{w_n}} | {'time (s)':^{w_t}} | {'result':^{w_s}} | {'total_cost':^{w_c}} |"
+    )
+    sep = (
+        "+"
+        + "-" * (w_n + 2)
+        + "+"
+        + "-" * (w_t + 2)
+        + "+"
+        + "-" * (w_s + 2)
+        + "+"
+        + "-" * (w_c + 2)
+        + "+"
+    )
+    print(sep)
+    print(header)
+    print(sep)
+    for n, elapsed, status, cost in rows:
+        ts = f"{elapsed:.2f}"
+        if cost is None:
+            cs = "—"
         else:
-            print(f"  ❌ FAILED after {elapsed:.2f}s ({nodes} nodes)")
-    
-    # Print summary
-    print("\n" + "="*80)
-    print("SCALABILITY TEST RESULTS")
-    print("="*80)
-    
-    print("\n| Teams | Result    | Time (s) | Nodes |")
-    print("|-------|-----------|----------|-------|")
-    
-    for r in results:
-        status = "✅ WORKS" if r["success"] else "❌ FAILS"
-        print(f"| {r['size']:5} | {status:9} | {r['time']:8.2f} | {r['nodes']:5} |")
-    
-    print("\n" + "="*80)
-    print("CONCLUSION")
-    print("="*80)
-    print("Pure CSP is only feasible for:")
-    print("  - 4 teams: ✅ (fast)")
-    print("  - 6 teams: ✅ (acceptable)")
-    print("  - 8 teams: ❌ (too slow / fails)")
-    print("  - 10+ teams: ❌ (infeasible)")
-    print("\nFor larger leagues, a hybrid approach is necessary.")
+            cs = f"{cost:.2f}"
+        print(f"| {n:^{w_n}} | {ts:^{w_t}} | {status:^{w_s}} | {cs:^{w_c}} |")
+    print(sep)
+    print(
+        "\nNotes:\n"
+        "  • total_cost = travel km + rest-day penalty + derby penalty + successive-away "
+        "penalties (see Minimize_total.cost_function).\n"
+        "  • NO_SCHEDULE_IN_TIME means csp_solver returned None within the limit.\n"
+    )
+
+
+def run_one(
+    n: int,
+    teams: List[Team],
+    derbies: Set[frozenset],
+    weekend: Set[str],
+    time_limit: float,
+    print_schedule: bool,
+) -> Tuple[float, str, Optional[float], Optional[object]]:
+    """
+    Returns (elapsed_seconds, status, total_cost_or_None, schedule_or_None).
+    """
+    dist_matrix = build_flat_matrix(teams)
+    t0 = time.time()
+    schedule = csp_solver(
+        teams,
+        time_limit=time_limit,
+        derbies=derbies,
+        weekend=list(weekend),
+    )
+    elapsed = time.time() - t0
+
+    if schedule is None:
+        print(f"\n❌ n={n}: no full schedule within {time_limit:.0f}s (elapsed {elapsed:.2f}s).")
+        return elapsed, "NO_SCHEDULE_IN_TIME", None, None
+
+    if not is_valid(schedule):
+        print(f"\n⚠ n={n}: solver returned a grid but is_valid() failed.")
+        for line in csp_validate(schedule)[:8]:
+            print(f"   - {line}")
+        return elapsed, "INVALID", None, schedule
+
+    total = cost_function(schedule, teams, dist_matrix, derbies, weekend, 500)
+    print(f"\n✅ n={n}: valid schedule in {elapsed:.2f}s  |  total_cost = {total:.2f}")
+
+    if print_schedule:
+        print_full_schedule(schedule, title=f"FULL SCHEDULE  (n = {n} teams)")
+
+    return elapsed, "OK", float(total), schedule
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description="CSP benchmark + schedules for n=10,12")
+    parser.add_argument(
+        "--sizes",
+        type=str,
+        default=",".join(str(x) for x in BENCHMARK_NS),
+        help=f"Comma-separated even team counts (default: {','.join(map(str,BENCHMARK_NS))})",
+    )
+    parser.add_argument(
+        "--time-limit",
+        type=float,
+        default=TIME_LIMIT_SEC,
+        help="Per-size time limit in seconds (default: 1200 = 20 min)",
+    )
+    parser.add_argument(
+        "--no-full-print",
+        action="store_true",
+        help="Do not print round-by-round schedule even for n=10,12",
+    )
+    args = parser.parse_args()
+
+    try:
+        sizes = tuple(int(x.strip()) for x in args.sizes.split(",") if x.strip())
+    except ValueError:
+        print("Bad --sizes", file=sys.stderr)
+        sys.exit(1)
+
+    csv_path = _find_teams_csv()
+    time_limit = float(args.time_limit)
+
+    print("\n" + "=" * 80)
+    print("CSP BENCHMARK  (csp_solver → days optimized in solver)")
+    print("=" * 80)
+    print(f"teams.csv: {csv_path}")
+    print(f"Per-size time limit: {time_limit:.0f}s ({time_limit/60:.1f} min)")
+    print(f"Sizes: {sizes}")
+
+    rows: List[Tuple[int, float, str, Optional[float]]] = []
+
+    for n in sizes:
+        if n % 2 or n < 2:
+            print(f"\nSkip n={n} (need an even number of teams ≥ 2).")
+            continue
+        teams = make_n_teams(n, csv_path)
+        derbies = derbies_relevant(teams, DERBIES)
+
+        want_full = (n in FULL_SCHEDULE_NS) and (not args.no_full_print)
+        elapsed, status, cost, _sched = run_one(
+            n, teams, derbies, WEEKEND, time_limit, print_schedule=want_full
+        )
+        rows.append((n, elapsed, status, cost))
+
+    print_results_table(rows)
 
 
 if __name__ == "__main__":
-    import argparse
-    
-    parser = argparse.ArgumentParser(description="Test Pure CSP Solver with Real Data")
-    parser.add_argument("--size", type=int, default=None,
-                       help="Test specific team size (e.g., --size 6)")
-    parser.add_argument("--time", type=int, default=60,
-                       help="Time limit in seconds (default: 60)")
-    parser.add_argument("--scalability", action="store_true",
-                       help="Run scalability test (4,6,8,10 teams)")
-    
-    args = parser.parse_args()
-    
-    if args.scalability:
-        run_scalability_test()
-    elif args.size:
-        test_specific_size(args.size, args.time)
-    else:
-        test_csp_with_real_teams()
+    main()
