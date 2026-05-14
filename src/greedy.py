@@ -2,65 +2,421 @@ import random
 import time
 import os
 import sys
+import copy
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from models   import Team, Match, Round, Schedule
 from schedule import double_round_robin, assign_all_days
 
+from Soft_constraints import (
+    Rest_day_penalty,
+    Derbies_penalty,
+    successive_away_penalty,
+)
 
-def _round_travel_cost(round_obj: Round,
-                       prev_location: dict,
-                       dist_matrix: dict) -> float:
+from Minimize_total import cost_function, total_distance
+
+
+DAY_OFFSET = {
+    "Friday": 0,
+    "Saturday": 1,
+    "Sunday": 2,
+    "Wednesday": 3,
+    "Thursday": 4,
+}
+
+REST_MIN = 6
+PENALTY = 500
+WEEKENDS = {"Friday", "Saturday"}
+
+
+
+
+
+def _incremental_travel(round_obj: Round,
+                        positions: dict,
+                        distances: dict) -> float:
+    """
+    Compute extra travel if this round is played next.
+    """
 
     total = 0.0
+
     for match in round_obj.matches:
-        origin = prev_location.get(match.away.name, match.away.name)
-        total += dist_matrix[origin][match.home.name]
+        if match is None:
+            continue
+
+        from_city = positions.get(match.away.name, match.away.name)
+        to_city = match.home.name
+
+        total += distances.get(from_city, {}).get(to_city, 0.0)
+
     return total
 
 
-def _away_streak(team_name: str, ordered_so_far: list) -> int:
-    streak = 0
-    for r in reversed(ordered_so_far):
-        is_home = any(m.home.name == team_name for m in r.matches)
-        is_away = any(m.away.name == team_name for m in r.matches)
-        if is_home:
-            return streak
-        if is_away:
-            streak += 1
-        else:
-            break
-    return streak
+
+def _apply_positions(round_obj: Round,
+                     positions: dict) -> dict:
+    """
+    Update team locations after a round.
+    """
+
+    updated = dict(positions)
+
+    for match in round_obj.matches:
+        if match is None:
+            continue
+
+        updated[match.away.name] = match.home.name
+        updated[match.home.name] = match.home.name
+
+    return updated
 
 
-def _greedy_order(schedule: Schedule, dist_matrix: dict) -> tuple:
-    remaining     = list(schedule.rounds)
-    ordered       = []
-    prev_location = {t.name: t.name for t in schedule.teams}
-    cumulative_km = 0.0
-    history       = []          # cumulative cost after each round is placed
+
+def _sequence_travel(order: list,
+                     rounds: list,
+                     distances: dict,
+                     teams: list) -> float:
+    """
+    Compute full travel cost for a round ordering.
+    """
+
+    positions = {t.name: t.name for t in teams}
+    total = 0.0
+
+    for idx in order:
+        total += _incremental_travel(rounds[idx], positions, distances)
+        positions = _apply_positions(rounds[idx], positions)
+
+    return total
+
+
+
+
+
+def _greedy_round_order(schedule: Schedule,
+                        distances: dict) -> list:
+    """
+    Greedy round ordering + 2-opt refinement.
+    Returns ordered list of round indices.
+    """
+
+    rounds = schedule.rounds
+    remaining = list(range(len(rounds)))
+
+    ordered = []
+
+    positions = {t.name: t.name for t in schedule.teams}
+
+    # -----------------------------
+    # Phase A: Greedy Construction
+    # -----------------------------
 
     while remaining:
-        scores = []
-        for i, r in enumerate(remaining):
-            km     = _round_travel_cost(r, prev_location, dist_matrix)
-            streak = sum(_away_streak(m.away.name, ordered) for m in r.matches)
-            scores.append((km, streak, i))
 
-        scores.sort(key=lambda x: (x[0], x[1]))
-        best_round             = remaining.pop(scores[0][2])
-        best_round.round_index = len(ordered)
-        ordered.append(best_round)
+        best_idx = min(
+            remaining,
+            key=lambda i: _incremental_travel(
+                rounds[i],
+                positions,
+                distances,
+            )
+        )
 
-        # accumulate travel for this round and record it
-        cumulative_km += _round_travel_cost(best_round, prev_location, dist_matrix)
-        history.append(round(cumulative_km, 2))
+        ordered.append(best_idx)
 
-        for match in best_round.matches:
-            prev_location[match.away.name] = match.home.name
-            prev_location[match.home.name] = match.home.name
+        positions = _apply_positions(
+            rounds[best_idx],
+            positions,
+        )
 
-    return Schedule(rounds=ordered, teams=schedule.teams), history
+        remaining.remove(best_idx)
+
+    # -----------------------------
+    # Phase B: 2-opt Refinement
+    # -----------------------------
+
+    improved = True
+
+    best_cost = _sequence_travel(
+        ordered,
+        rounds,
+        distances,
+        schedule.teams,
+    )
+
+    while improved:
+
+        improved = False
+
+        for i in range(len(ordered) - 1):
+
+            for j in range(i + 2, len(ordered)):
+
+                candidate = (
+                    ordered[:i]
+                    + ordered[i:j + 1][::-1]
+                    + ordered[j + 1:]
+                )
+
+                candidate_cost = _sequence_travel(
+                    candidate,
+                    rounds,
+                    distances,
+                    schedule.teams,
+                )
+
+                if candidate_cost < best_cost - 1e-6:
+                    ordered = candidate
+                    best_cost = candidate_cost
+                    improved = True
+
+    return ordered
+
+
+
+def _apply_round_order(schedule: Schedule,
+                       order: list) -> Schedule:
+    """
+    Rebuild schedule using optimized round order.
+    Reindexes rounds correctly.
+    """
+
+    new_schedule = copy.deepcopy(schedule)
+
+    old_rounds = schedule.rounds
+
+    for new_position, old_position in enumerate(order):
+
+        new_round = Round(round_index=new_position)
+
+        new_round.matches = copy.deepcopy(
+            old_rounds[old_position].matches
+        )
+
+        new_schedule.rounds[new_position] = new_round
+
+    return new_schedule
+
+
+
+def _greedy_assign_days(schedule: Schedule,
+                        derbies: set,
+                        weekends: set,
+                        penalty: int) -> Schedule:
+    """
+    Assign match days while minimizing penalties.
+    """
+
+    new_schedule = copy.deepcopy(schedule)
+
+    last_absolute_day = {}
+    away_streak = {}
+
+    for round_obj in new_schedule.rounds:
+
+        matches = round_obj.matches
+        days = list(round_obj.days)
+
+        if not matches:
+            continue
+
+        def absolute_day(day_label: str) -> int:
+            return (
+                round_obj.round_index * 7
+                + DAY_OFFSET.get(day_label, 2)
+            )
+
+        def penalty_score(match: Match,
+                          day_label: str) -> float:
+
+            score = 0.0
+
+            current_day = absolute_day(day_label)
+
+            # Rest-day penalty
+            for team in (match.home, match.away):
+
+                previous_day = last_absolute_day.get(team.name)
+
+                if previous_day is not None:
+
+                    if (current_day - previous_day) < REST_MIN:
+                        score += penalty
+
+            # Consecutive away penalty
+            streak = away_streak.get(match.away.name, 0)
+
+            if streak >= 2:
+                score += penalty
+
+            # Derby weekend preference
+            pair = frozenset([
+                match.home.name,
+                match.away.name,
+            ])
+
+            if pair in derbies and day_label not in weekends:
+                score += penalty
+
+            return score
+
+        def is_derby(match: Match) -> bool:
+            return frozenset([
+                match.home.name,
+                match.away.name,
+            ]) in derbies
+
+        derby_matches = [m for m in matches if is_derby(m)]
+        regular_matches = [m for m in matches if not is_derby(m)]
+
+        used_days = []
+
+        def choose_best_day(match: Match,
+                            prefer_weekend: bool) -> str:
+
+            weekend_days = [
+                d for d in days
+                if d in weekends and d not in used_days
+            ]
+
+            non_weekend_days = [
+                d for d in days
+                if d not in weekends and d not in used_days
+            ]
+
+            available_days = [
+                d for d in days
+                if d not in used_days
+            ]
+
+            if prefer_weekend:
+                pool = weekend_days + non_weekend_days
+            else:
+                pool = non_weekend_days + weekend_days
+
+            if not pool:
+                pool = available_days if available_days else days
+
+            best_day = min(
+                pool,
+                key=lambda d: penalty_score(match, d)
+            )
+
+            used_days.append(best_day)
+
+            return best_day
+
+        assignment = {}
+
+        # Derbies first
+        for match in derby_matches:
+            assignment[id(match)] = choose_best_day(
+                match,
+                prefer_weekend=True,
+            )
+
+        for match in regular_matches:
+            assignment[id(match)] = choose_best_day(
+                match,
+                prefer_weekend=False,
+            )
+
+        # Apply assignments
+        for match in matches:
+
+            selected_day = assignment.get(id(match), days[0])
+
+            match.day = selected_day
+
+            current_day = absolute_day(selected_day)
+
+            last_absolute_day[match.home.name] = current_day
+            last_absolute_day[match.away.name] = current_day
+
+            away_streak[match.away.name] = (
+                away_streak.get(match.away.name, 0) + 1
+            )
+
+            away_streak[match.home.name] = 0
+
+    return new_schedule
+
+
+
+def compute_total_travel(schedule: Schedule,
+                         dist_matrix: dict) -> float:
+    """
+    Compatibility wrapper.
+    """
+
+    return round(
+        total_distance(
+            schedule,
+            dist_matrix,
+            schedule.teams,
+        ),
+        2,
+    )
+
+
+
+def validate_schedule(schedule: Schedule) -> dict:
+    """
+    Basic schedule validation.
+    """
+
+    teams = [t.name for t in schedule.teams]
+
+    n = len(teams)
+
+    issues = {
+        "wrong_round_count": 0,
+        "wrong_matches_per_round": 0,
+        "team_appears_twice_in_round": 0,
+        "pair_not_exactly_once": 0,
+    }
+
+    if schedule.total_rounds() != (n - 1) * 2:
+        issues["wrong_round_count"] = abs(
+            schedule.total_rounds() - ((n - 1) * 2)
+        )
+
+    pair_count = {}
+
+    for round_obj in schedule.rounds:
+
+        if len(round_obj.matches) != n // 2:
+            issues["wrong_matches_per_round"] += 1
+
+        seen = set()
+
+        for match in round_obj.matches:
+
+            if (
+                match.home.name in seen
+                or match.away.name in seen
+            ):
+                issues["team_appears_twice_in_round"] += 1
+
+            seen.add(match.home.name)
+            seen.add(match.away.name)
+
+            key = (match.home.name, match.away.name)
+
+            pair_count[key] = pair_count.get(key, 0) + 1
+
+    for t1 in teams:
+        for t2 in teams:
+
+            if t1 == t2:
+                continue
+
+            if pair_count.get((t1, t2), 0) != 1:
+                issues["pair_not_exactly_once"] += 1
+
+    return issues
 
 
 
@@ -68,271 +424,198 @@ def greedy_schedule(teams: list,
                     dist_matrix: dict,
                     seed: int = 42,
                     verbose: bool = False) -> tuple:
-    
+    """
+    Compatible advanced greedy scheduler.
+
+    Keeps the SAME interface as the old version
+    so teammates' code does not break.
+    """
+
     random.seed(seed)
+
     t0 = time.time()
 
-    raw                = double_round_robin(teams)
-    ordered, history   = _greedy_order(raw, dist_matrix)   # unpack tuple
-    schedule           = assign_all_days(ordered)
-    best_cost          = compute_total_travel(schedule, dist_matrix)
-
-    if verbose:
-        elapsed = time.time() - t0
-        print(f"[greedy] rounds={schedule.total_rounds()} | "
-              f"travel={best_cost:,.1f} km | time={elapsed:.4f}s")
-
-    return schedule, best_cost, history
-
-
-def compute_total_travel(schedule: Schedule, dist_matrix: dict) -> float:
-    prev  = {t.name: t.name for t in schedule.teams}
-    total = 0.0
-
-    for r in schedule.rounds:
-        for match in r.matches:
-            total += dist_matrix[prev.get(match.away.name,
-                                          match.away.name)][match.home.name]
-        for match in r.matches:
-            prev[match.away.name] = match.home.name
-            prev[match.home.name] = match.home.name
-
-    return round(total, 2)
-
-
-def validate_schedule(schedule: Schedule) -> dict:
-    teams = [t.name for t in schedule.teams]
-    n     = len(teams)
-    issues = {
-        "wrong_round_count"          : 0,
-        "wrong_matches_per_round"    : 0,
-        "team_appears_twice_in_round": 0,
-        "pair_not_exactly_once"      : 0,
-    }
-
-    if schedule.total_rounds() != (n - 1) * 2:
-        issues["wrong_round_count"] = abs(schedule.total_rounds() - (n - 1) * 2)
-
-    pair_count = {}
-    for r in schedule.rounds:
-        if len(r.matches) != n // 2:
-            issues["wrong_matches_per_round"] += 1
-        seen = set()
-        for m in r.matches:
-            if m.home.name in seen or m.away.name in seen:
-                issues["team_appears_twice_in_round"] += 1
-            seen.add(m.home.name)
-            seen.add(m.away.name)
-            key = (m.home.name, m.away.name)
-            pair_count[key] = pair_count.get(key, 0) + 1
-
-    for t1 in teams:
-        for t2 in teams:
-            if t1 != t2 and pair_count.get((t1, t2), 0) != 1:
-                issues["pair_not_exactly_once"] += 1
-
-    return issues
-
-
-#test by claude
-if __name__ == "__main__":
-
-    sys.path.insert(0, os.path.dirname(__file__))
-    from data_loader import load_all, load_derbies
-    from soft_constraints import Derbies_penalty, Rest_day_penalty, successive_away_penalty
-    PENALTY    = 500
-    WEEKENDS   = {"Friday", "Saturday"}
-    # ── Load ───────────────────────────────────────────────────────
-    team_candidates   = ["data/teams.csv",   "../data/teams.csv",   "teams.csv"]
-    derby_candidates  = ["data/derbies.csv",  "../data/derbies.csv",  "derbies.csv"]
-    teams_path  = next((p for p in team_candidates  if os.path.exists(p)), None)
-    derby_path  = next((p for p in derby_candidates if os.path.exists(p)), None)
-    if teams_path is None:
-        print("ERROR: teams.csv not found."); raise SystemExit(1)
-    teams, dist_matrix = load_all(teams_path)
-    derbies = load_derbies(derby_path) if derby_path else set()
-    if not derby_path:
-        print("WARNING: derbies.csv not found — derby penalty will be 0.\n")
-    print(f"Loaded {len(teams)} teams, {len(derbies)} derby pairs.\n")
-
-    # ── Run greedy (returns tuple) ─────────────────────────
-    schedule, best_cost, history = greedy_schedule(teams, dist_matrix,
-
-                                                   seed=42, verbose=True)
-    # ══════════════════════════════════════════════════════════════
-    # 1. HARD CONSTRAINT VALIDATION
-    # ══════════════════════════════════════════════════════════════
-
-    print("\n" + "="*52)
-    print("  HARD CONSTRAINTS")
-    print("="*52)
-    issues = validate_schedule(schedule)
-    print("\n── Internal checks ──")
-    for name, count in issues.items():
-        print(f"  {'✓' if count == 0 else '✗'}  {name:<40}: {count}")
-
+    # Load derbies safely
     try:
-        from constraints import is_valid, csp_validate
-        print("\n── Authoritative check (constraints.py) ──")
-        print(f"  is_valid() → {'✓ VALID' if is_valid(schedule) else '✗ INVALID'}")
-        violations = csp_validate(schedule)
-        if violations:
+        from data_loader import load_derbies
 
-            for v in violations:
+        derby_candidates = [
+            "data/derbies.csv",
+            "../data/derbies.csv",
+            "derbies.csv",
+        ]
 
-                print(f"    ✗ {v}")
-
-        else:
-
-            print("  csp_validate() → no violations ✓")
-
-    except ImportError:
-
-        print("  (constraints.py not found — skipping)")
-
-    # ══════════════════════════════════════════════════════════════
-
-    # 2. SOFT CONSTRAINT BREAKDOWN
-
-    # ══════════════════════════════════════════════════════════════
-
-    print("\n" + "="*52)
-
-    print("  SOFT CONSTRAINTS  (penalty per violation =", PENALTY, ")")
-
-    print("="*52)
-
-
-
-    # ── 2a. Rest-day penalty ───────────────────────────────────────
-
-    rest_total = Rest_day_penalty(schedule, teams, penalty=PENALTY)
-
-    rest_violations = rest_total // PENALTY
-
-    print(f"\n── Rest-day penalty (< 6 days between consecutive matches) ──")
-
-    print(f"  Total penalty : {rest_total:>8,.0f}")
-
-    print(f"  Violations    : {rest_violations:>8}")
-
-
-
-    # Per-team breakdown
-
-    match_days_map = {"Friday":0,"Saturday":1,"Sunday":2,"Wednesday":3,"Thursday":4}
-
-    for team in teams:
-
-        team_days = []
-
-        for r in schedule.rounds:
-
-            for m in r.matches:
-
-                if m.home.name == team.name or m.away.name == team.name:
-
-                    team_days.append(m.day)
-
-        bad = sum(
-
-            1 for i in range(len(team_days)-1)
-
-            if (7 - match_days_map[team_days[i]] + match_days_map[team_days[i+1]]) < 6
-
+        derby_path = next(
+            (p for p in derby_candidates if os.path.exists(p)),
+            None,
         )
 
-        if bad:
+        if derby_path:
+            derbies = load_derbies(derby_path)
+        else:
+            derbies = set()
 
-            print(f"    ✗ {team.name:<20} {bad} violation(s)")
+    except Exception:
+        derbies = set()
+
+    history = []
+
+    # -------------------------------------------------------------------
+    # Phase 1: Base Double Round Robin
+    # -------------------------------------------------------------------
+
+    base_schedule = double_round_robin(teams)
+
+    base_cost = cost_function(
+        base_schedule,
+        teams,
+        dist_matrix,
+        derbies,
+        WEEKENDS,
+        PENALTY,
+    )
+
+    history.append(base_cost)
+
+    # -------------------------------------------------------------------
+    # Phase 2: Greedy Round Ordering
+    # -------------------------------------------------------------------
+
+    optimized_order = _greedy_round_order(
+        base_schedule,
+        dist_matrix,
+    )
+
+    ordered_schedule = _apply_round_order(
+        base_schedule,
+        optimized_order,
+    )
+
+    ordered_cost = cost_function(
+        ordered_schedule,
+        teams,
+        dist_matrix,
+        derbies,
+        WEEKENDS,
+        PENALTY,
+    )
+
+    history.append(ordered_cost)
+
+    # -------------------------------------------------------------------
+    # Phase 3: Smart Day Assignment
+    # -------------------------------------------------------------------
+
+    final_schedule = _greedy_assign_days(
+        ordered_schedule,
+        derbies,
+        WEEKENDS,
+        PENALTY,
+    )
+
+    best_cost = cost_function(
+        final_schedule,
+        teams,
+        dist_matrix,
+        derbies,
+        WEEKENDS,
+        PENALTY,
+    )
+
+    history.append(best_cost)
+
+    # -------------------------------------------------------------------
+    # Verbose Mode
+    # -------------------------------------------------------------------
+
+    if verbose:
+
+        elapsed = time.time() - t0
+
+        print(
+            f"[greedy] rounds={final_schedule.total_rounds()} | "
+            f"travel={best_cost:,.1f} | "
+            f"time={elapsed:.4f}s"
+        )
+
+    return final_schedule, best_cost, history
 
 
 
-    # ── 2b. Derby penalty ─────────────────────────────────────────
-
-    derby_total = Derbies_penalty(schedule, derbies, WEEKENDS, penalty=PENALTY)
-
-    derby_violations = derby_total // PENALTY
-
-    print(f"\n── Derby penalty (derby match not on a weekend) ──")
-
-    print(f"  Total penalty : {derby_total:>8,.0f}")
-
-    print(f"  Violations    : {derby_violations:>8}")
 
 
+if __name__ == "__main__":
 
-    for r in schedule.rounds:
+    from data_loader import load_all, load_derbies
 
-        for m in r.matches:
-
-            pair = frozenset([m.home.name, m.away.name])
-
-            if pair in derbies and m.day not in WEEKENDS:
-
-                print(f"    ✗ {m.home.name} vs {m.away.name}  scheduled on {m.day}")
+    print("=" * 60)
+    print("ADVANCED GREEDY SCHEDULER")
+    print("=" * 60)
 
 
+    team_candidates = [
+        "data/teams.csv",
+        "../data/teams.csv",
+        "teams.csv",
+    ]
 
-    # ── 2c. Successive away penalty ───────────────────────────────
+    derby_candidates = [
+        "data/derbies.csv",
+        "../data/derbies.csv",
+        "derbies.csv",
+    ]
 
-    print(f"\n── Successive away penalty (≥ 3 consecutive away games) ──")
+    teams_path = next(
+        (p for p in team_candidates if os.path.exists(p)),
+        None,
+    )
 
-    succ_total = 0
+    derby_path = next(
+        (p for p in derby_candidates if os.path.exists(p)),
+        None,
+    )
 
-    for team in teams:
+    if teams_path is None:
+        print("ERROR: teams.csv not found")
+        raise SystemExit(1)
 
-        p = successive_away_penalty(team, schedule, penalty=PENALTY)
+    teams, dist_matrix = load_all(teams_path)
 
-        succ_total += p
+    derbies = load_derbies(derby_path) if derby_path else set()
 
-        if p:
-
-            print(f"    ✗ {team.name:<20} penalty = {p}")
-
-    if succ_total == 0:
-
-        print("  No violations ✓")
-
-    print(f"  Total penalty : {succ_total:>8,.0f}")
-
-
-
-    # ══════════════════════════════════════════════════════════════
-
-    # 3. COST SUMMARY
-
-    # ══════════════════════════════════════════════════════════════
-
-    travel_km  = compute_total_travel(schedule, dist_matrix)
-
-    total_cost = travel_km + rest_total + derby_total
+    print(f"Loaded {len(teams)} teams")
+    print(f"Loaded {len(derbies)} derby pairs")
 
 
+    schedule, best_cost, history = greedy_schedule(
+        teams,
+        dist_matrix,
+        seed=42,
+        verbose=True,
+    )
 
-    print("\n" + "="*52)
+    print("\nHistory:")
 
-    print("  COST SUMMARY")
+    for i, value in enumerate(history):
+        print(f"  Step {i + 1}: {value:,.1f}")
 
-    print("="*52)
+    print("\nFinal Cost:")
+    print(f"  {best_cost:,.1f}")
 
-    print(f"  Travel distance   : {travel_km:>10,.1f} km")
+    print("\nValidation:")
 
-    print(f"  Rest-day penalty  : {rest_total:>10,.0f}")
+    issues = validate_schedule(schedule)
 
-    print(f"  Derby penalty     : {derby_total:>10,.0f}")
+    for name, value in issues.items():
+        status = "✓" if value == 0 else "✗"
+        print(f"  {status} {name}: {value}")
 
-    print(f"  Successive away   : {succ_total:>10,.0f}  (info only)")
+    print("\nDone.")
 
-    print(f"  {'─'*38}")
 
-    print(f"  Total cost        : {total_cost:>10,.1f}")
 
-    print(f"\n  Rounds  : {schedule.total_rounds()}")
 
-    print(f"  Matches : {schedule.total_matches()}")
 
-    print(f"  History : {len(history)} entries "
 
-          f"(first={history[0]:,.1f}  last={history[-1]:,.1f})")
+
 
