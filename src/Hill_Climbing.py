@@ -187,7 +187,7 @@ def _random_restart_schedule(teams):
 
 
 _STRATEGIES = {
-    "steepest":     _steepest_step,
+    # "steepest":     _steepest_step,
     "first_choice": _first_choice_step,
     "stochastic":   _stochastic_step,
 }
@@ -327,19 +327,19 @@ if __name__ == "__main__":
     print_solution_details(initial, teams, distances, derbies, WEEKEND_DAYS,
                            label="INITIAL SCHEDULE")
 
-    for strat in ["first_choice", "stochastic", "steepest"]:
-        best, best_cost, history = hill_climbing(
-            schedule       = initial,
-            distances      = distances,
-            derbies        = derbies,
-            weekends       = WEEKEND_DAYS,
-            teams          = teams,
-            strategy       = strat,
-            max_restarts   = 5,
-            max_iterations = 200,
-            max_sideways   = 10,
-            cost_fn        = cost_function,
-            verbose        = True,
-        )
-        print_solution_details(best, teams, distances, derbies, WEEKEND_DAYS,
-                               label=f"BEST — {strat.upper()}")
+    
+    best, best_cost, history = hill_climbing(
+        schedule       = initial,
+        distances      = distances,
+        derbies        = derbies,
+        weekends       = WEEKEND_DAYS,
+        teams          = teams,
+        strategy       = "stochastic",
+        max_restarts   = 5,
+        max_iterations = 200,
+        max_sideways   = 10,
+        cost_fn        = cost_function,
+        verbose        = True,
+    )
+    print_solution_details(best, teams, distances, derbies, WEEKEND_DAYS,
+                            label=f"BEST — {strat.upper()}")

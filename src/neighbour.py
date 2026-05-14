@@ -12,28 +12,55 @@ def swap_rounds ( schedule , round_i , round_j ) :
     
     return new_schedule
 
-def swap_home_away ( schedule , round_i , match_i ):
-    new_schedule = copy.deepcopy ( schedule )
-    n = len ( new_schedule.rounds )
-    half = n // 2
+
+#=======corected version of swap home away=================
+def swap_home_away(schedule, round_i, match_i):
+    new_schedule = copy.deepcopy(schedule)
     
-    match = new_schedule.rounds [ round_i ].matches [ match_i ]
+    match = new_schedule.rounds[round_i].matches[match_i]
+    pair  = match.pair()   # frozenset of the two team names
     
-    match.home , match.away = match.away , match.home 
+    # flip this match
+    match.home, match.away = match.away, match.home
     
-    if round_i < half : 
-        mirror_i = round_i + half    
-    else : 
-        mirror_i = round_i - half 
-        
-    mirror_round = new_schedule.rounds [ mirror_i ]
+    # find the mirror match by searching ALL other rounds for same pair
+    # with opposite home/away — do NOT assume round_index arithmetic
+    for r_idx, round_obj in enumerate(new_schedule.rounds):
+        if r_idx == round_i:
+            continue
+        for m in round_obj.matches:
+            if m.pair() == pair and m.home.name == match.away.name:
+                # this is the mirror — flip it too
+                m.home, m.away = m.away, m.home
+                return new_schedule
     
-    for m in mirror_round.matches : 
-        if m.pair() == match.pair() : 
-            m.home , m.away = m.away , m.home 
-            break 
-        
+    # if no mirror found — revert the first flip to avoid corruption
+    match.home, match.away = match.away, match.home
     return new_schedule
+
+
+# def swap_home_away ( schedule , round_i , match_i ):
+#     new_schedule = copy.deepcopy ( schedule )
+#     n = len ( new_schedule.rounds )
+#     half = n // 2
+    
+#     match = new_schedule.rounds [ round_i ].matches [ match_i ]
+    
+#     match.home , match.away = match.away , match.home 
+    
+#     if round_i < half : 
+#         mirror_i = round_i + half    
+#     else : 
+#         mirror_i = round_i - half 
+        
+#     mirror_round = new_schedule.rounds [ mirror_i ]
+    
+#     for m in mirror_round.matches : 
+#         if m.pair() == match.pair() : 
+#             m.home , m.away = m.away , m.home 
+#             break 
+        
+#     return new_schedule
     
 
 def swap_days_in_round ( schedule , round_i , match_i_a , match_i_b ):
@@ -87,19 +114,20 @@ def generate_all_neighbours(schedule):
 
     for i in range(n):
         for j in range(i + 1, n):
-            yield swap_third_day(schedule, i, j)    
+            yield swap_third_day(schedule, i, j)  
+              
 def generate_one_random_neighbor(schedule):
     n = len(schedule.rounds)
-    move = random.choice([1, 3, 4])
+    move = random.choice([1,2, 3, 4])
 
     if move == 1:
         i, j = random.sample(range(n), 2)
         return swap_rounds(schedule, i, j)
 
-    # elif move == 2:
-    #     i = random.randint(0, n - 1)
-    #     m_idx = random.randint(0, len(schedule.rounds[i].matches) - 1)
-    #     return swap_home_away(schedule, i, m_idx)
+    elif move == 2:
+        i = random.randint(0, n - 1)
+        m_idx = random.randint(0, len(schedule.rounds[i].matches) - 1)
+        return swap_home_away(schedule, i, m_idx)
 
     elif move == 3:
         i = random.randint(0, n - 1)
@@ -114,4 +142,41 @@ def generate_one_random_neighbor(schedule):
          
 
     
+#modified vergion for generating neighbor
+def generate_one_random_neighbor_sa(schedule, T, T_start):
 
+    n = len(schedule.rounds)
+
+    # HOT phase
+    if T > T_start * 0.3:
+
+        move = random.choices(
+            [1,2,3,4],
+            weights=[50,20,20,10]
+        )[0]
+
+    # COLD phase
+    else:
+
+        move = random.choices(
+            [1,2,3,4],
+            weights=[5,40,40,15]
+        )[0]
+    if move == 1:
+        i, j = random.sample(range(n), 2)
+        return swap_rounds(schedule, i, j)
+
+    elif move == 2:
+        i = random.randint(0, n - 1)
+        m_idx = random.randint(0, len(schedule.rounds[i].matches) - 1)
+        return swap_home_away(schedule, i, m_idx)
+
+    elif move == 3:
+        i = random.randint(0, n - 1)
+        n_matches = len(schedule.rounds[i].matches)
+        a, b = random.sample(range(n_matches), 2)
+        return swap_days_in_round (schedule, i, a, b)
+
+    elif move == 4:
+        i, j = random.sample(range(n), 2)
+        return swap_third_day(schedule, i, j)
