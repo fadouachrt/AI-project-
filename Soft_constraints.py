@@ -19,7 +19,7 @@ def Derbies_penalty(schedule, derbies, weekend, penalty=500):
 
 
 def Rest_day_penalty(schedule, teams, penalty=500):
-    match_days = {"Friday": 0, "Saturday": 1, "Sunday": 2, "Thursday": 3}
+    match_days = {"Friday": 0, "Saturday": 1, "Sunday": 2, "Thursday": 3, "Wednesday": 4}
     total = 0
     for team in teams:
         team_match_day = []
