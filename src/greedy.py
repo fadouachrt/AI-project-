@@ -1,22 +1,14 @@
+
 import random
 import time
+import copy
 import os
 import sys
-import copy
-
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
-from models   import Team, Match, Round, Schedule
-from schedule import double_round_robin, assign_all_days
-
-from Soft_constraints import (
-    Rest_day_penalty,
-    Derbies_penalty,
-    successive_away_penalty,
-)
-
-from Minimize_total import cost_function, total_distance
-
-
+from .Minimize_total import cost_function,total_distance;
+from .models   import Team, Match, Round, Schedule
+from .schedule import double_round_robin,assign_all_days;
+from .data_loader import load_all, load_derbies
+from .Soft_constraints import Rest_day_penalty,Derbies_penalty,successive_away_penalty;
 DAY_OFFSET = {
     "Friday": 0,
     "Saturday": 1,
@@ -420,7 +412,10 @@ def validate_schedule(schedule: Schedule) -> dict:
 
 
 
-def greedy_schedule(teams: list,
+def greedy_schedule(schedule,
+                    weekends,
+                    derbies,
+                    teams: list,
                     dist_matrix: dict,
                     seed: int = 42,
                     verbose: bool = False) -> tuple:
@@ -435,59 +430,31 @@ def greedy_schedule(teams: list,
 
     t0 = time.time()
 
-    # Load derbies safely
-    try:
-        from data_loader import load_derbies
-
-        derby_candidates = [
-            "data/derbies.csv",
-            "../data/derbies.csv",
-            "derbies.csv",
-        ]
-
-        derby_path = next(
-            (p for p in derby_candidates if os.path.exists(p)),
-            None,
-        )
-
-        if derby_path:
-            derbies = load_derbies(derby_path)
-        else:
-            derbies = set()
-
-    except Exception:
-        derbies = set()
-
     history = []
 
     # -------------------------------------------------------------------
     # Phase 1: Base Double Round Robin
     # -------------------------------------------------------------------
 
-    base_schedule = double_round_robin(teams)
-
     base_cost = cost_function(
-        base_schedule,
+        schedule,
         teams,
         dist_matrix,
         derbies,
-        WEEKENDS,
-        PENALTY,
+        weekends,
     )
-
-    history.append(base_cost)
 
     # -------------------------------------------------------------------
     # Phase 2: Greedy Round Ordering
     # -------------------------------------------------------------------
 
     optimized_order = _greedy_round_order(
-        base_schedule,
+        schedule,
         dist_matrix,
     )
 
     ordered_schedule = _apply_round_order(
-        base_schedule,
+        schedule,
         optimized_order,
     )
 
@@ -496,11 +463,8 @@ def greedy_schedule(teams: list,
         teams,
         dist_matrix,
         derbies,
-        WEEKENDS,
-        PENALTY,
+        weekends,
     )
-
-    history.append(ordered_cost)
 
     # -------------------------------------------------------------------
     # Phase 3: Smart Day Assignment
@@ -611,11 +575,4 @@ if __name__ == "__main__":
         print(f"  {status} {name}: {value}")
 
     print("\nDone.")
-
-
-
-
-
-
-
 
