@@ -25,10 +25,11 @@ from Soft_constraints   import Rest_day_penalty, Derbies_penalty, successive_awa
 TEAMS_CSV   = "../data/teams.csv"
 DERBIES_CSV = "../data/derbies.csv"
 WEEKENDS    = {"Friday", "Saturday"}
-PENALTY     = 500
+# PENALTY     = 500
 
 GREEDY_PARAMS = {
     "seed": 42,
+    "verbose":True,
 }
 
 HC_PARAMS = {
@@ -42,7 +43,7 @@ HC_PARAMS = {
 }
 
 SA_PARAMS = {
-    "T_start"      : 15000,
+    "T_start"      : 8000,
     "T_min"        : 0.1,
     "alpha"        : 0.9997,
     "max_iteration": 30000,
@@ -76,9 +77,9 @@ def fmt(v):
     return str(v)
 
 def get_penalties(schedule):
-    rest  = Rest_day_penalty(schedule, teams, PENALTY)
-    derby = Derbies_penalty(schedule, derbies, WEEKENDS, PENALTY)
-    away  = sum(successive_away_penalty(t, schedule, PENALTY) for t in teams)
+    rest  = Rest_day_penalty(schedule, teams)
+    derby = Derbies_penalty(schedule, derbies, WEEKENDS)
+    away  = sum(successive_away_penalty(t, schedule) for t in teams)
     return rest, derby, away
 
 # ═══════════════════════════════════════════════════════════════════
@@ -91,7 +92,7 @@ derbies = load_derbies(DERBIES_CSV)
 print(f"  {len(teams)} teams  |  {len(derbies)} derby pairs")
 
 initial_schedule = assign_all_days(double_round_robin(teams))
-initial_cost     = cost_function(initial_schedule, teams, distances, derbies, WEEKENDS, PENALTY)
+initial_cost     = cost_function(initial_schedule, teams, distances, derbies, WEEKENDS)
 
 # ═══════════════════════════════════════════════════════════════════
 #  RUN ALGORITHMS
@@ -100,13 +101,13 @@ initial_cost     = cost_function(initial_schedule, teams, distances, derbies, WE
 print("\n  Running algorithms...\n")
 
 # ── Greedy ──────────────────────────────────────────────────────────
-print("  [1/3] Greedy...", end=" ", flush=True)
-t0 = time.perf_counter()
-g_sched, g_travel, g_history = greedy_schedule(teams, distances, **GREEDY_PARAMS)
-g_time = time.perf_counter() - t0
-g_cost = cost_function(g_sched, teams, distances, derbies, WEEKENDS, PENALTY)
-g_rest, g_derby, g_away = get_penalties(g_sched)
-print(f"done  ({g_time:.3f}s)")
+# print("  [1/3] Greedy...", end=" ", flush=True)
+# t0 = time.perf_counter()
+# g_sched, g_travel, g_history = greedy_schedule(teams, distances,derbies ,teams , distances,**GREEDY_PARAMS)
+# g_time = time.perf_counter() - t0
+# g_cost = cost_function(g_sched, teams, distances, derbies, WEEKENDS, PENALTY)
+# g_rest, g_derby, g_away = get_penalties(g_sched)
+# print(f"done  ({g_time:.3f}s)")
 
 # ── Hill Climbing ───────────────────────────────────────────────────
 print("  [2/3] Hill Climbing...", end=" ", flush=True)
@@ -162,7 +163,7 @@ for k, v in SA_PARAMS.items():
     print(f"    {k:<20} = {v}")
 
 print(f"\n  Shared")
-print(f"    {'penalty':<20} = {PENALTY}")
+# print(f"    {'penalty':<20} = {PENALTY}")
 print(f"    {'weekends':<20} = {sorted(WEEKENDS)}")
 
 # ═══════════════════════════════════════════════════════════════════
@@ -177,26 +178,25 @@ print(f"  {'':26}{'Greedy':>{COL}}{'Hill Climbing':>{COL}}{'Simul. Anneal.':>{CO
 line()
 
 print(f"\n  — Cost Breakdown —")
-row("Total cost",        fmt(g_cost),           fmt(hc_cost),   fmt(sa_cost))
-row("Travel distance",   fmt(compute_total_travel(g_sched, distances)),
+row("Total cost",                fmt(hc_cost),   fmt(sa_cost))
+row("Travel distance",   
                                                 fmt(hc_dist),   fmt(sa_dist))
-row("Rest-day penalty",  fmt(g_rest),           fmt(hc_rest),   fmt(sa_rest))
-row("Derby penalty",     fmt(g_derby),          fmt(hc_derby),  fmt(sa_derby))
-row("Successive away",   fmt(g_away),           fmt(hc_away),   fmt(sa_away))
+row("Rest-day penalty",            fmt(hc_rest),   fmt(sa_rest))
+row("Derby penalty",             fmt(hc_derby),  fmt(sa_derby))
+row("Successive away",              fmt(hc_away),   fmt(sa_away))
 
 line()
-print(f"\n  — Violations (at {PENALTY}/each) —")
-row("Rest-day",          int(g_rest//PENALTY),  int(hc_rest//PENALTY),  int(sa_rest//PENALTY))
-row("Derby",             int(g_derby//PENALTY), int(hc_derby//PENALTY), int(sa_derby//PENALTY))
-row("Successive away",   int(g_away//PENALTY),  int(hc_away//PENALTY),  int(sa_away//PENALTY))
+# print(f"\n  — Violations (at {PENALTY}/each) —")
+# row("Rest-day",           int(hc_rest//PENALTY),  int(sa_rest//PENALTY))
+# row("Derby",              int(hc_derby//PENALTY), int(sa_derby//PENALTY))
+# row("Successive away",     int(hc_away//PENALTY),  int(sa_away//PENALTY))
 
 line()
 print(f"\n  — Performance —")
-row("Runtime (s)",       f"{g_time:.3f}",       f"{hc_time:.3f}",       f"{sa_time:.3f}")
-row("Iterations / steps",len(g_history),        len(hc_history),        len(sa_history))
+row("Runtime (s)",             f"{hc_time:.3f}",       f"{sa_time:.3f}")
+row("Iterations / steps",        len(hc_history),        len(sa_history))
 
-if g_history:
-    row("Initial cost (greedy)", fmt(g_history[0]), "", "")
+ 
 if hc_history:
     row("HC start → end",  "", f"{fmt(initial_cost)} → {fmt(hc_cost)}", "")
 if sa_history:
@@ -211,7 +211,7 @@ line()
 header("RANKING")
 
 results = [
-    ("Greedy",             g_cost,  g_time),
+    
     ("Hill Climbing",      hc_cost, hc_time),
     ("Simulated Annealing",sa_cost, sa_time),
 ]
@@ -234,7 +234,7 @@ print(f"     {ranked[0][0]} beats {ranked[2][0]} by {fmt(cost_gap_1_3)} cost uni
 
 # penalty champion
 pen_totals = [
-    ("Greedy",             g_rest + g_derby + g_away),
+    
     ("Hill Climbing",      hc_rest + hc_derby + hc_away),
     ("Simulated Annealing",sa_rest + sa_derby + sa_away),
 ]

@@ -3,11 +3,11 @@ import time
 import copy
 import os
 import sys
-from .Minimize_total import cost_function,total_distance;
-from .models   import Team, Match, Round, Schedule
-from .schedule import double_round_robin,assign_all_days;
-from .data_loader import load_all, load_derbies
-from .Soft_constraints import Rest_day_penalty,Derbies_penalty,successive_away_penalty;
+from Minimize_total import cost_function,total_distance;
+from models   import Team, Match, Round, Schedule
+from schedule import double_round_robin,assign_all_days;
+from data_loader import load_all, load_derbies
+from Soft_constraints import Rest_day_penalty,Derbies_penalty,successive_away_penalty;
 DAY_OFFSET = {
     "Friday": 0,
     "Saturday": 1,
