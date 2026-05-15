@@ -113,4 +113,3 @@ def generate_one_random_neighbor(schedule):
         return swap_third_day(schedule, i, j)
          
          
-

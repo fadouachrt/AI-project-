@@ -1,5 +1,4 @@
 
-
 THIRD_DAY_OPTION = ["Wednesday", "Thursday", "Sunday"]
 ROUND_DAYS = ["Friday", "Saturday"]
 
@@ -53,4 +52,3 @@ class Schedule:
                 print(f"  {match}")
                 
 
-    

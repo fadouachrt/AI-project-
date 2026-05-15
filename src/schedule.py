@@ -1,4 +1,4 @@
-#schedule.py
+
 import random 
 from models import Match , Round , Schedule 
 
@@ -64,5 +64,3 @@ def assign_match_day ( round_obj ) :
         match.day = "Friday"
     for match in third_matches : 
         match.day = round_obj.third_day 
-        
-        
