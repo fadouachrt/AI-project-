@@ -1,9 +1,8 @@
-team_a,team_b,rivalry_name,priority
-USM Alger,MC Alger,Derby d'Alger,1
-USM Alger,CR Belouizdad,Derby d'Alger,1
-MC Alger,CR Belouizdad,Derby d'Alger,1
-JS Kabylie,Olympique Akbou,Derby de Kabylie,2
-CS Constantine,ES Setif,Derby de l'Est,2
-CS Constantine,USM Khenchela,Derby de l'Est,3
-ES Setif,USM Khenchela,Derby de l'Est,3
-JS Saoura,MB Rouissat,Derby du Sud,3
+team_a,team_b,rivalry_name
+USM Alger,MC Alger,Derby d'Alger 1
+USM Alger,CR Belouizdad,Derby d'Alger 2
+USM Alger,JS Kabylie,classico kabylo_algerois
+MC Alger,JS Kabylie,algerian classico
+USM Alger,ES Setif,Derby Setif_Alger
+USM Alger,MC Oran,Derby Oran_Alger
+MC Oran,CR Belouizdad,Derby CRB_MCO
