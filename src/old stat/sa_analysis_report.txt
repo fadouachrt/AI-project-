@@ -1,0 +1,75 @@
+══════════════════════════════════════════════════════════════════════════════
+  SIMULATED ANNEALING — STATISTICAL PERFORMANCE ANALYSIS
+  5 independent runs per configuration | Initial cost: 260,646.1
+  Global best found: 128,876.8
+══════════════════════════════════════════════════════════════════════════════
+
+  1. AGGREGATE STATISTICS
+──────────────────────────────────────────────────────────────────────────────
+  Config                 Mean    Std Dev        Min        Max    CV%  Improv%
+──────────────────────────────────────────────────────────────────────────────
+  C - slow cool       135,207      4,443    128,877    139,836   3.3%    48.1%
+  D - cold start      138,423      5,336    129,774    144,144   3.9%    46.9%
+  B - fast cool       140,408      7,468    129,118    148,724   5.3%    46.1%
+  A - baseline        144,206      3,324    139,100    146,573   2.3%    44.7%
+
+  CV% = Coefficient of Variation = StdDev/Mean×100.
+  Lower CV% means more consistent (less sensitive to random seed).
+
+  2. RELATIVE OPTIMALITY GAP
+──────────────────────────────────────────────────────────────────────────────
+  Best known solution found across all runs: 128,876.8
+
+  Config             Gap (mean)   Gap (best)  Interpretation
+──────────────────────────────────────────────────────────────────────────────
+  C - slow cool           4.91%        0.00%  ★ reference
+  D - cold start          7.41%        0.70%  +7.41% above best
+  B - fast cool           8.95%        0.19%  +8.95% above best
+  A - baseline           11.89%        7.93%  +11.89% above best
+
+  Gap (mean) = (mean_cost − best_known) / best_known × 100.
+  A gap < 5% is considered competitive in the literature.
+
+  3. CONVERGENCE BEHAVIOUR (averaged over all runs)
+──────────────────────────────────────────────────────────────────────────────
+  Config            90%gain@iter%  Last impr. iter  Still impr. (%)
+──────────────────────────────────────────────────────────────────────────────
+  A - baseline                70%           18,877             100%
+  B - fast cool               56%           18,871             100%
+  C - slow cool               57%           28,423             100%
+  D - cold start              47%           27,159             100%
+
+  '90%gain@iter%' = how far through the run 90% of improvement was achieved.
+  'Last impr. iter' = last iteration where best_cost improved (avg).
+  'Still impr. (%)' = % of runs still improving in the final 20% of iterations.
+
+  4. STATISTICAL SIGNIFICANCE — WELCH'S t-TEST (α = 0.05)
+──────────────────────────────────────────────────────────────────────────────
+  Comparison                             t-stat    p-value   Significant?
+──────────────────────────────────────────────────────────────────────────────
+  A - baseline vs B - fast cool       1.039     0.1000             no
+  A - baseline vs C - slow cool       3.626     0.0400 YES ← significant
+  A - baseline vs D - cold start      2.057     0.1000             no
+  B - fast cool vs C - slow cool       1.338     0.1000             no
+  B - fast cool vs D - cold start      0.484     0.1000             no
+  C - slow cool vs D - cold start     -1.036     0.1000             no
+
+  A significant result (p < 0.05) means the difference in mean cost
+  is unlikely to be due to chance. Non-significant pairs are effectively
+  equivalent — choose by variance or runtime in that case.
+
+  5. RECOMMENDATION
+──────────────────────────────────────────────────────────────────────────────
+  Best mean cost    → C - slow cool  (mean=135,207, CV=3.3%)
+  Most consistent   → A - baseline
+  Best single run   → achieved 128,876.8
+
+  Parameters for recommended configuration:
+    T_start              = 15000
+    T_min                = 0.1
+    alpha                = 0.9997
+    max_iteration        = 30000
+    reheat_every         = 4000
+    reheat_factor        = 2.5
+
+══════════════════════════════════════════════════════════════════════════════

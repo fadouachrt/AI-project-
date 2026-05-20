@@ -1,231 +1,168 @@
 """
 sa_statistical_analysis.py
 ===========================
-Rigorous statistical evaluation of SA parameter configurations.
-Implements the standard practices from the metaheuristics research community:
+Statistical evaluation of 4 SA configurations over N_RUNS independent trials.
 
-  1. Aggregate statistics  — mean, std dev, min, max over N runs
-  2. Relative optimality gap — how far from the best known result
-  3. Learning curves        — mean trajectory + best trajectory per config
-  4. Statistical significance — Welch's t-test between every pair of configs
-  5. Full CSV export        — all raw runs for the report appendix
-
-All output files are written next to this script:
-  sa_analysis_raw.csv       — every individual run (N_RUNS × configs rows)
-  sa_analysis_summary.csv   — one row per config with all aggregate stats
-  sa_analysis_report.txt    — human-readable report ready to paste into report
-  sa_learning_curves.png    — mean + best trajectory per config on one plot
-  sa_boxplot.png            — box-and-whisker of cost distributions
+Produces:
+  sa_analysis_raw.csv       — every individual run (for report appendix)
+  sa_analysis_summary.csv   — one row per config (paste into report table)
+  sa_analysis_report.txt    — formatted text ready to paste into report
+  sa_learning_curves.png    — mean convergence + box-plot side by side
 """
 
-import sys, os, time, csv, math, random, itertools
+import sys, os, time, csv, math, random
 from copy      import deepcopy
 from datetime  import timedelta
 
 import matplotlib
-matplotlib.use("Agg")          # no display needed — saves files directly
+matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
-import numpy as np
 
 sys.path.insert(0, os.path.dirname(__file__))
 
 from data_loader          import load_all, load_derbies
 from schedule             import double_round_robin, assign_all_days
 from simulated_annealing  import simulated_annealing
-from Minimize_total       import cost_function, total_distance
-from Soft_constraints     import (Rest_day_penalty, Derbies_penalty,
-                                   successive_away_penalty)
+from Minimize_total       import cost_function,total_distance
+from Soft_constraints import Rest_day_penalty,Derbies_penalty,successive_away_penalty
 
 # ═══════════════════════════════════════════════════════════════════
-#  CONFIG
+#  CONFIG  — edit here only
 # ═══════════════════════════════════════════════════════════════════
 
 TEAMS_CSV   = "../data/teams.csv"
 DERBIES_CSV = "../data/derbies.csv"
 WEEKENDS    = {"Friday", "Saturday"}
+PENALTY     = 500
+N_RUNS      = 20       # independent trials per configuration
 
-# Number of independent runs per configuration.
-# Research standard: 20-30.  Set lower for a quick test, higher for the report.
-N_RUNS = 5
-
-# The configurations to compare.
 CONFIGS = {
-    "A - baseline" : {"T_start": 8_000,  "T_min": 0.1, "alpha": 0.9997,
-                      "max_iteration": 20_000, "reheat_every": 2_000, "reheat_factor": 2.0},
-    "B - fast cool": {"T_start": 8_000,  "T_min": 0.1, "alpha": 0.9994,
-                      "max_iteration": 20_000, "reheat_every": 2_000, "reheat_factor": 2.0},
-    "C - slow cool": {"T_start": 15_000, "T_min": 0.1, "alpha": 0.9997,
-                      "max_iteration": 30_000, "reheat_every": 4_000, "reheat_factor": 2.5},
-    "D - cold start":{"T_start": 8_000,  "T_min": 0.1, "alpha": 0.9997,
-                      "max_iteration": 30_000, "reheat_every": 4_000, "reheat_factor": 2.0},
+    "A": {"T_start": 8_000,  "T_min": 0.1, "alpha": 0.9997,
+          "max_iteration": 20_000, "reheat_every": 2_000, "reheat_factor": 2.0},
+    "B": {"T_start": 8_000,  "T_min": 0.1, "alpha": 0.9994,
+          "max_iteration": 20_000, "reheat_every": 2_000, "reheat_factor": 2.0},
+    "C": {"T_start": 15_000, "T_min": 0.1, "alpha": 0.9997,
+          "max_iteration": 30_000, "reheat_every": 4_000, "reheat_factor": 2.5},
+    "D": {"T_start": 8_000,  "T_min": 0.1, "alpha": 0.9997,
+          "max_iteration": 30_000, "reheat_every": 4_000, "reheat_factor": 2.0},
 }
+
+COLORS = {"A": "steelblue", "B": "orange", "C": "green", "D": "purple"}
 
 OUT_RAW     = "sa_analysis_raw.csv"
 OUT_SUMMARY = "sa_analysis_summary.csv"
 OUT_REPORT  = "sa_analysis_report.txt"
-OUT_CURVES  = "sa_learning_curves.png"
-OUT_BOX     = "sa_boxplot.png"
+OUT_PLOT    = "sa_learning_curves.png"
 
 # ═══════════════════════════════════════════════════════════════════
 #  STATISTICAL HELPERS
 # ═══════════════════════════════════════════════════════════════════
 
-def mean(data):
+def _mean(data):
     return sum(data) / len(data)
 
-def std_dev(data):
+def _std(data):
     if len(data) < 2:
         return 0.0
-    m = mean(data)
+    m = _mean(data)
     return math.sqrt(sum((x - m) ** 2 for x in data) / (len(data) - 1))
 
-def welch_t_test(a, b):
-    """
-    Welch's unpaired t-test — does NOT assume equal variance.
-    Returns (t_statistic, p_value_approx, significant_at_5pct).
-    Uses the scipy-free Welch-Satterthwaite approximation.
-    """
-    n_a, n_b   = len(a), len(b)
-    mean_a, mean_b = mean(a), mean(b)
-    var_a  = std_dev(a) ** 2
-    var_b  = std_dev(b) ** 2
-
-    se = math.sqrt(var_a / n_a + var_b / n_b)
-    if se == 0:
-        return 0.0, 1.0, False
-
-    t = (mean_a - mean_b) / se
-
-    # Welch-Satterthwaite degrees of freedom
-    num   = (var_a / n_a + var_b / n_b) ** 2
-    denom = ((var_a / n_a) ** 2 / (n_a - 1) +
-             (var_b / n_b) ** 2 / (n_b - 1))
-    df    = num / denom if denom > 0 else n_a + n_b - 2
-
-    # Approximate two-tailed p-value using a t→z approximation for df>30
-    # (good enough for N_RUNS >= 15; for smaller N use scipy.stats.t)
-    abs_t = abs(t)
-    if df >= 30:
-        # Normal approximation
-        z = abs_t
-        p = 2 * (1 - _normal_cdf(z))
-    else:
-        # Simple conservative bound: t-distribution critical values
-        # df=10→2.228, df=15→2.131, df=20→2.086, df=25→2.060, df=29→2.045
-        crit = {10: 2.228, 15: 2.131, 20: 2.086, 25: 2.060, 29: 2.045}
-        nearest = min(crit.keys(), key=lambda k: abs(k - int(df)))
-        p = 0.04 if abs_t > crit[nearest] else 0.10   # approximate
-
-    significant = p < 0.05
-    return t, p, significant
-
-def _normal_cdf(z):
-    """Abramowitz & Stegun approximation for Φ(z)."""
-    t = 1.0 / (1.0 + 0.2316419 * abs(z))
-    poly = t * (0.319381530
-              + t * (-0.356563782
-              + t * (1.781477937
-              + t * (-1.821255978
-              + t * 1.330274429))))
-    p = 1.0 - (1.0 / math.sqrt(2 * math.pi)) * math.exp(-0.5 * z ** 2) * poly
-    return p if z >= 0 else 1.0 - p
-
-def convergence_metrics(history):
-    """
-    Returns:
-      conv_iter  — iteration at which 90% of total improvement was reached
-      conv_pct   — that iteration as % of total run length
-      still_improving — True if last 20% of run still yielded improvement
-      last_improvement_iter — last iteration where best_cost improved
-    """
-    total   = len(history)
-    initial = history[0]
-    final   = history[-1]
-
-    if initial == final:
-        return total, 100.0, False, 0
-
-    target = initial - 0.90 * (initial - final)
-    conv_iter = next((i for i, c in enumerate(history) if c <= target), total)
-    conv_pct  = 100.0 * conv_iter / total
-
-    last_20 = int(0.8 * total)
-    still_improving = history[last_20] > history[-1]
-
-    # last iteration where best actually improved
-    last_impr = 0
-    prev = history[0]
+def last_improvement_iter(history):
+    best, last = history[0], 0
     for i, c in enumerate(history):
-        if c < prev:
-            last_impr = i
-            prev = c
+        if c < best:
+            best, last = c, i
+    return last
 
-    return conv_iter, conv_pct, still_improving, last_impr
+def convergence_pct(history):
+    initial, final = history[0], history[-1]
+    if initial == final:
+        return 100.0
+    target = initial - 0.90 * (initial - final)
+    idx = next((i for i, c in enumerate(history) if c <= target), len(history))
+    return 100.0 * idx / len(history)
 
-def resample_history(history, target_len=1000):
-    """Downsample a history list to target_len points for plotting."""
-    n = len(history)
-    if n <= target_len:
-        return history
-    indices = [int(i * n / target_len) for i in range(target_len)]
-    return [history[i] for i in indices]
+def still_improving(history):
+    cut = int(0.8 * len(history))
+    return history[cut] > history[-1]
 
 # ═══════════════════════════════════════════════════════════════════
 #  LOAD DATA
 # ═══════════════════════════════════════════════════════════════════
 
-print("\n" + "═" * 65)
+print("\n" + "═" * 60)
 print("  SA STATISTICAL ANALYSIS")
-print("═" * 65)
-print(f"\n  Loading data...")
+print("═" * 60)
+print("\n  Loading data...")
 teams, distances = load_all(TEAMS_CSV)
 derbies          = load_derbies(DERBIES_CSV)
 print(f"  {len(teams)} teams | {len(derbies)} derby pairs")
 
-initial_schedule = assign_all_days(double_round_robin(teams))
-INITIAL_COST     = cost_function(initial_schedule, teams, distances, derbies, WEEKENDS)
-print(f"  Initial cost : {INITIAL_COST:,.1f}")
-print(f"  Configs      : {len(CONFIGS)}")
-print(f"  Runs each    : {N_RUNS}")
+# run this in BOTH standalone and notebook
+# paste both outputs so we can compare line by line
 
-total_runs  = len(CONFIGS) * N_RUNS
-# Calibration: rough estimate of time per run using first config
-print(f"\n  Calibrating runtime...")
-_p0 = list(CONFIGS.values())[0]
-_t0 = time.perf_counter()
-simulated_annealing(deepcopy(initial_schedule), distances, derbies,
-                    WEEKENDS, teams, cost_fn=cost_function, **_p0)
-_calib = time.perf_counter() - _t0
-# Avg iteration ratio across configs
-_avg_iters = mean([p["max_iteration"] for p in CONFIGS.values()])
-_base_iters = _p0["max_iteration"]
-_scale = _avg_iters / _base_iters
-_est   = _calib * total_runs * _scale
-print(f"  Calibration  : {_calib:.1f}s per run (config A)")
-print(f"  Estimated total runtime: {timedelta(seconds=int(_est))}")
-print(f"\n  Starting {total_runs} runs...\n")
+schedule = assign_all_days(double_round_robin(teams))
+
+# print the first round to see if schedules are structurally different
+print("=== FIRST ROUND ===")
+for match in schedule.rounds[0].matches:
+    print(f"  {match.home.name} vs {match.away.name} | {match.day}")
+
+print(f"\nTotal rounds: {len(schedule.rounds)}")
+print(f"Matches per round: {len(schedule.rounds[0].matches)}")
+
+# print each cost component separately
+travel = total_distance(schedule, distances, teams)
+rest   = Rest_day_penalty(schedule, teams, 500)
+derby  = Derbies_penalty(schedule, derbies, WEEKENDS, 500)
+away   = sum(successive_away_penalty(t, schedule, 500) for t in teams)
+
+print(f"\n=== COST BREAKDOWN ===")
+print(f"Travel : {travel:,.0f}")
+print(f"Rest   : {rest:,.0f}")
+print(f"Derby  : {derby:,.0f}")
+print(f"Away   : {away:,.0f}")
+print(f"Total  : {travel+rest+derby+away:,.0f}")
+
+# print which days are being assigned
+print(f"\n=== DAY DISTRIBUTION ===")
+from collections import Counter
+all_days = [m.day for r in schedule.rounds for m in r.matches]
+for day, count in sorted(Counter(all_days).items()):
+    print(f"  {day}: {count} matches")
+
+# print team order
+print(f"\n=== TEAM ORDER ===")
+for i, t in enumerate(teams):
+    print(f"  {i+1}. {t.name}")
+    
+initial_schedule = assign_all_days(double_round_robin(teams))
+INITIAL_COST     = cost_function(
+    initial_schedule, teams, distances, derbies, WEEKENDS, PENALTY)
+print(f"  Initial cost : {INITIAL_COST:,.0f}")
+print(f"  Configs      : {list(CONFIGS.keys())}")
+print(f"  Runs each    : {N_RUNS}")
+print(f"  Total runs   : {len(CONFIGS) * N_RUNS}\n")
 
 # ═══════════════════════════════════════════════════════════════════
 #  MAIN EXPERIMENT LOOP
 # ═══════════════════════════════════════════════════════════════════
 
-raw_rows   = []       # one dict per run for CSV
-all_data   = {}       # config_name → list of costs (for t-tests, boxplot)
-all_histories = {}    # config_name → list of histories (for learning curves)
+raw_rows      = []
+all_costs     = {k: [] for k in CONFIGS}
+all_times     = {k: [] for k in CONFIGS}
+all_histories = {k: [] for k in CONFIGS}
+all_last_impr = {k: [] for k in CONFIGS}
+all_conv_pcts = {k: [] for k in CONFIGS}
+all_still_imp = {k: [] for k in CONFIGS}
 
 global_start = time.perf_counter()
+total_runs   = len(CONFIGS) * N_RUNS
 run_counter  = 0
 
-for config_name, params in CONFIGS.items():
-    print(f"  ── {config_name} ──")
-    costs       = []
-    times       = []
-    conv_pcts   = []
-    last_imprs  = []
-    still_imprs = []
-    histories   = []
-
+for cfg, params in CONFIGS.items():
+    print(f"  ── Config {cfg} ──")
     for run in range(1, N_RUNS + 1):
         run_counter += 1
         t0 = time.perf_counter()
@@ -240,325 +177,259 @@ for config_name, params in CONFIGS.items():
         )
         elapsed = time.perf_counter() - t0
 
-        conv_iter, conv_pct, still_imp, last_impr = convergence_metrics(history)
-        improvement = 100.0 * (INITIAL_COST - best_cost) / INITIAL_COST
-        gap_from_best = None   # filled in after all runs
+        impr = 100.0 * (INITIAL_COST - best_cost) / INITIAL_COST
+        li   = last_improvement_iter(history)
+        cp   = convergence_pct(history)
+        si   = still_improving(history)
 
-        costs.append(best_cost)
-        times.append(elapsed)
-        conv_pcts.append(conv_pct)
-        last_imprs.append(last_impr)
-        still_imprs.append(still_imp)
-        histories.append(history)
+        all_costs[cfg].append(best_cost)
+        all_times[cfg].append(elapsed)
+        all_histories[cfg].append(history)
+        all_last_impr[cfg].append(li)
+        all_conv_pcts[cfg].append(cp)
+        all_still_imp[cfg].append(si)
 
         raw_rows.append({
-            "config"        : config_name,
-            "run"           : run,
-            "best_cost"     : round(best_cost, 1),
-            "improvement_pct": round(improvement, 2),
-            "runtime_s"     : round(elapsed, 2),
-            "conv_iter"     : conv_iter,
-            "conv_pct"      : round(conv_pct, 1),
-            "still_improving": int(still_imp),
-            "last_impr_iter": last_impr,
-            **{k: v for k, v in params.items()},
+            "config": cfg, "run": run,
+            "best_cost": round(best_cost, 1),
+            "improvement_pct": round(impr, 2),
+            "runtime_s": round(elapsed, 2),
+            "last_impr_iter": li,
+            "conv_pct": round(cp, 1),
+            "still_improving": int(si),
+            **{k: v for k, v in params.items() if k != "T_min"},
         })
 
-        elapsed_total = time.perf_counter() - global_start
-        eta = timedelta(seconds=int(elapsed_total / run_counter * (total_runs - run_counter)))
+        done = time.perf_counter() - global_start
+        eta  = timedelta(seconds=int(done / run_counter * (total_runs - run_counter)))
         print(f"    run {run:>2}/{N_RUNS}  cost={best_cost:>10,.0f}  "
-              f"improv={improvement:>5.1f}%  time={elapsed:>6.1f}s  ETA {eta}")
-
-    all_data[config_name]     = costs
-    all_histories[config_name] = histories
+              f"improv={impr:>5.1f}%  time={elapsed:>6.1f}s  ETA {eta}")
     print()
 
 # ═══════════════════════════════════════════════════════════════════
 #  AGGREGATE STATISTICS
 # ═══════════════════════════════════════════════════════════════════
 
-# Global best known across ALL runs of ALL configs
-global_best = min(c for costs in all_data.values() for c in costs)
-
-summary = {}
-for name, costs in all_data.items():
-    m    = mean(costs)
-    sd   = std_dev(costs)
-    mn   = min(costs)
-    mx   = max(costs)
-    impr = 100.0 * (INITIAL_COST - m) / INITIAL_COST
-
-    # Relative gap: how far is the MEAN from the best known solution found
-    gap_mean = 100.0 * (m - global_best) / global_best
-    gap_best = 100.0 * (mn - global_best) / global_best   # always 0 for the best config
-
-    summary[name] = {
-        "mean"      : m,
-        "std_dev"   : sd,
-        "min"       : mn,
-        "max"       : mx,
-        "range"     : mx - mn,
-        "cv"        : 100.0 * sd / m,   # coefficient of variation (%)
-        "impr_pct"  : impr,
-        "gap_mean"  : gap_mean,
-        "gap_best"  : gap_best,
-        "params"    : CONFIGS[name],
+stats = {}
+for cfg in CONFIGS:
+    costs = all_costs[cfg]
+    times = all_times[cfg]
+    m, sd = _mean(costs), _std(costs)
+    mn, mx = min(costs), max(costs)
+    stats[cfg] = {
+        "mean"          : m,
+        "std_dev"       : sd,
+        "min"           : mn,
+        "max"           : mx,
+        "cv"            : 100.0 * sd / m,
+        "impr_pct"      : 100.0 * (INITIAL_COST - m) / INITIAL_COST,
+        "avg_time"      : _mean(times),
+        "avg_last_impr" : _mean(all_last_impr[cfg]),
+        "avg_conv_pct"  : _mean(all_conv_pcts[cfg]),
+        "pct_still_imp" : 100.0 * sum(all_still_imp[cfg]) / N_RUNS,
     }
 
-# ═══════════════════════════════════════════════════════════════════
-#  WELCH T-TEST — every pair
-# ═══════════════════════════════════════════════════════════════════
-
-config_names = list(CONFIGS.keys())
-ttest_results = {}
-for i in range(len(config_names)):
-    for j in range(i + 1, len(config_names)):
-        a, b   = config_names[i], config_names[j]
-        t, p, sig = welch_t_test(all_data[a], all_data[b])
-        ttest_results[(a, b)] = {"t": t, "p": p, "significant": sig}
+cfg_names = list(CONFIGS.keys())
 
 # ═══════════════════════════════════════════════════════════════════
-#  WRITE RAW CSV
+#  WRITE CSV FILES
 # ═══════════════════════════════════════════════════════════════════
 
-raw_fields = (["config", "run", "best_cost", "improvement_pct",
-               "runtime_s", "conv_iter", "conv_pct",
-               "still_improving", "last_impr_iter"]
-              + list(list(CONFIGS.values())[0].keys()))
-
+raw_fields = ["config", "run", "best_cost", "improvement_pct", "runtime_s",
+              "last_impr_iter", "conv_pct", "still_improving",
+              "T_start", "alpha", "max_iteration", "reheat_every", "reheat_factor"]
 with open(OUT_RAW, "w", newline="", encoding="utf-8") as f:
     w = csv.DictWriter(f, fieldnames=raw_fields)
     w.writeheader()
     w.writerows(raw_rows)
 
-# ═══════════════════════════════════════════════════════════════════
-#  WRITE SUMMARY CSV
-# ═══════════════════════════════════════════════════════════════════
-
-sum_fields = ["config", "mean", "std_dev", "min", "max", "range",
-              "cv_pct", "impr_pct", "gap_from_best_mean_pct",
-              "gap_from_best_min_pct",
-              "T_start", "alpha", "max_iteration", "reheat_every", "reheat_factor"]
-
+sum_fields = ["config", "mean", "std_dev", "min", "max", "cv_pct",
+              "improvement_pct", "avg_time_s",
+              "avg_last_impr_iter", "avg_conv_pct", "pct_still_improving"]
 with open(OUT_SUMMARY, "w", newline="", encoding="utf-8") as f:
     w = csv.DictWriter(f, fieldnames=sum_fields)
     w.writeheader()
-    for name, s in summary.items():
+    for cfg, s in stats.items():
         w.writerow({
-            "config"                 : name,
-            "mean"                   : round(s["mean"], 1),
-            "std_dev"                : round(s["std_dev"], 1),
-            "min"                    : round(s["min"], 1),
-            "max"                    : round(s["max"], 1),
-            "range"                  : round(s["range"], 1),
-            "cv_pct"                 : round(s["cv"], 2),
-            "impr_pct"               : round(s["impr_pct"], 2),
-            "gap_from_best_mean_pct" : round(s["gap_mean"], 2),
-            "gap_from_best_min_pct"  : round(s["gap_best"], 2),
-            **{k: s["params"][k] for k in
-               ["T_start", "alpha", "max_iteration", "reheat_every", "reheat_factor"]},
+            "config"              : cfg,
+            "mean"                : round(s["mean"], 1),
+            "std_dev"             : round(s["std_dev"], 1),
+            "min"                 : round(s["min"], 1),
+            "max"                 : round(s["max"], 1),
+            "cv_pct"              : round(s["cv"], 2),
+            "improvement_pct"     : round(s["impr_pct"], 2),
+            "avg_time_s"          : round(s["avg_time"], 2),
+            "avg_last_impr_iter"  : round(s["avg_last_impr"]),
+            "avg_conv_pct"        : round(s["avg_conv_pct"], 1),
+            "pct_still_improving" : round(s["pct_still_imp"], 1),
         })
 
 # ═══════════════════════════════════════════════════════════════════
-#  BUILD TEXT REPORT
+#  TEXT REPORT
 # ═══════════════════════════════════════════════════════════════════
 
-W = 78
-def dline(): return "═" * W
-def sline(): return "─" * W
+W  = 78
+HL = "═" * W
+SL = "─" * W
+lines = []
+def p(s=""): lines.append(s)
 
-report = []
-def p(s=""): report.append(s)
-
-p(dline())
+p(HL)
 p("  SIMULATED ANNEALING — STATISTICAL PERFORMANCE ANALYSIS")
-p(f"  {N_RUNS} independent runs per configuration | Initial cost: {INITIAL_COST:,.1f}")
-p(f"  Global best found: {global_best:,.1f}")
-p(dline())
+p(f"  {N_RUNS} independent runs per configuration | Initial cost: {INITIAL_COST:,.0f}")
+p(HL)
 
-# ── 1. Aggregate Statistics Table ─────────────────────────────────
+# Table 1
 p()
-p("  1. AGGREGATE STATISTICS")
-p(sline())
-p(f"  {'Config':<16} {'Mean':>10} {'Std Dev':>10} {'Min':>10} {'Max':>10} "
-  f"{'CV%':>6} {'Improv%':>8}")
-p(sline())
-ranked = sorted(summary.items(), key=lambda x: x[1]["mean"])
-for name, s in ranked:
-    p(f"  {name:<16} {s['mean']:>10,.0f} {s['std_dev']:>10,.0f} "
+p("  TABLE 1 — AGGREGATE STATISTICS")
+p(SL)
+p(f"  {'Config':<8} {'Mean':>10} {'Std Dev':>10} {'Min':>10} {'Max':>10}"
+  f" {'CV%':>6} {'Improv%':>8} {'Time(s)':>9}")
+p(SL)
+for cfg in cfg_names:
+    s = stats[cfg]
+    p(f"  {cfg:<8} {s['mean']:>10,.0f} {s['std_dev']:>10,.0f} "
       f"{s['min']:>10,.0f} {s['max']:>10,.0f} "
-      f"{s['cv']:>5.1f}% {s['impr_pct']:>7.1f}%")
+      f"{s['cv']:>5.1f}% {s['impr_pct']:>7.1f}% {s['avg_time']:>9.2f}")
 p()
-p("  CV% = Coefficient of Variation = StdDev/Mean×100.")
-p("  Lower CV% means more consistent (less sensitive to random seed).")
+p("  CV% = Coefficient of Variation = StdDev / Mean × 100.")
+p("  Lower CV% = more consistent across random seeds.")
 
-# ── 2. Optimality Gap Table ────────────────────────────────────────
+# Table 2
 p()
-p("  2. RELATIVE OPTIMALITY GAP")
-p(sline())
-p(f"  Best known solution found across all runs: {global_best:,.1f}")
+p("  TABLE 2 — CONVERGENCE BEHAVIOUR (averages over all runs)")
+p(SL)
+p(f"  {'Config':<8} {'Avg last impr iter':>20} {'90% gain at iter%':>19}"
+  f" {'Still impr last 20% (%)':>24}")
+p(SL)
+for cfg in cfg_names:
+    s = stats[cfg]
+    p(f"  {cfg:<8} {s['avg_last_impr']:>20,.0f} {s['avg_conv_pct']:>18.0f}%"
+      f" {s['pct_still_imp']:>23.0f}%")
 p()
-p(f"  {'Config':<16} {'Gap (mean)':>12} {'Gap (best)':>12}  Interpretation")
-p(sline())
-for name, s in ranked:
-    interp = ("★ reference" if s["gap_best"] == 0.0
-              else f"+{s['gap_mean']:.2f}% above best")
-    p(f"  {name:<16} {s['gap_mean']:>11.2f}% {s['gap_best']:>11.2f}%  {interp}")
-p()
-p("  Gap (mean) = (mean_cost − best_known) / best_known × 100.")
-p("  A gap < 5% is considered competitive in the literature.")
+p("  'Avg last impr iter' = average iteration of the final improvement.")
+p("  '90% gain at iter%'  = how far through the run before 90% of gain is locked in.")
+p("  'Still impr last 20%'= % of runs still finding improvements in the last 20%.")
 
-# ── 3. Convergence Summary ─────────────────────────────────────────
+# Recommendation
+ranked_cfgs = sorted(cfg_names, key=lambda c: stats[c]["mean"])
+best        = ranked_cfgs[0]
+most_stable = min(cfg_names, key=lambda c: stats[c]["cv"])
 p()
-p("  3. CONVERGENCE BEHAVIOUR (averaged over all runs)")
-p(sline())
-
-# recompute per-config convergence averages from raw_rows
-conv_by_config = {n: {"conv_pcts": [], "last_imprs": [], "still": []}
-                  for n in config_names}
-for row in raw_rows:
-    n = row["config"]
-    conv_by_config[n]["conv_pcts"].append(row["conv_pct"])
-    conv_by_config[n]["last_imprs"].append(row["last_impr_iter"])
-    conv_by_config[n]["still"].append(row["still_improving"])
-
-p(f"  {'Config':<16} {'90%gain@iter%':>14} {'Last impr. iter':>16} {'Still impr. (%)':>16}")
-p(sline())
-for name in config_names:
-    d   = conv_by_config[name]
-    cp  = mean(d["conv_pcts"])
-    li  = mean(d["last_imprs"])
-    pct_still = 100.0 * sum(d["still"]) / len(d["still"])
-    p(f"  {name:<16} {cp:>13.0f}% {li:>16,.0f} {pct_still:>15.0f}%")
+p("  RECOMMENDATION")
+p(SL)
+p(f"  Best mean cost   → Config {best}  "
+  f"(mean={stats[best]['mean']:,.0f}, CV={stats[best]['cv']:.1f}%)")
+p(f"  Most consistent  → Config {most_stable}  "
+  f"(CV={stats[most_stable]['cv']:.1f}%)")
+p(f"  Best single run  → {min(stats[c]['min'] for c in cfg_names):,.0f}")
 p()
-p("  '90%gain@iter%' = how far through the run 90% of improvement was achieved.")
-p("  'Last impr. iter' = last iteration where best_cost improved (avg).")
-p("  'Still impr. (%)' = % of runs still improving in the final 20% of iterations.")
-
-# ── 4. Statistical Significance ────────────────────────────────────
+p("  Recommended parameters:")
+for k, v in CONFIGS[best].items():
+    if k != "T_min":
+        p(f"    {k:<20} = {v}")
 p()
-p("  4. STATISTICAL SIGNIFICANCE — WELCH'S t-TEST (α = 0.05)")
-p(sline())
-p(f"  {'Comparison':<36} {'t-stat':>8} {'p-value':>10} {'Significant?':>14}")
-p(sline())
-for (a, b), res in ttest_results.items():
-    sig_str = "YES ← significant" if res["significant"] else "no"
-    p(f"  {a} vs {b:<16} {res['t']:>8.3f} {res['p']:>10.4f} {sig_str:>14}")
-p()
-p("  A significant result (p < 0.05) means the difference in mean cost")
-p("  is unlikely to be due to chance. Non-significant pairs are effectively")
-p("  equivalent — choose by variance or runtime in that case.")
+p(HL)
 
-# ── 5. Recommendation ─────────────────────────────────────────────
-best_name  = ranked[0][0]
-best_stats = ranked[0][1]
-p()
-p("  5. RECOMMENDATION")
-p(sline())
-p(f"  Best mean cost    → {best_name}  (mean={best_stats['mean']:,.0f}, "
-  f"CV={best_stats['cv']:.1f}%)")
-p(f"  Most consistent   → {min(ranked, key=lambda x: x[1]['cv'])[0]}")
-p(f"  Best single run   → achieved {global_best:,.1f}")
-p()
-p("  Parameters for recommended configuration:")
-for k, v in best_stats["params"].items():
-    p(f"    {k:<20} = {v}")
-
-p()
-p(dline())
-
-report_text = "\n".join(report)
-print("\n" + report_text)
-
+report_text = "\n".join(lines)
+print("\n" + report_text + "\n")
 with open(OUT_REPORT, "w", encoding="utf-8") as f:
     f.write(report_text + "\n")
 
 # ═══════════════════════════════════════════════════════════════════
-#  PLOT 1: LEARNING CURVES — mean trajectory + best trajectory
+#  PLOT — left: mean learning curves (x = actual iterations)
+#         right: box-plot of final cost distributions
 # ═══════════════════════════════════════════════════════════════════
 
-COLORS = {"A - baseline": "steelblue",
-           "B - fast cool": "orange",
-           "C - slow cool": "green",
-           "D - cold start": "purple"}
+fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 6))
+fig.suptitle(
+    f"SA Configuration Comparison — {N_RUNS} independent runs each   "
+    f"|   Initial cost = {INITIAL_COST:,.0f}",
+    fontsize=12, fontweight="bold"
+)
 
-TARGET_PTS = 500   # points to plot per curve (downsampled for speed)
-
-fig, axes = plt.subplots(1, 2, figsize=(16, 6))
-fig.suptitle(f"SA Learning Curves — {N_RUNS} runs per configuration",
-             fontsize=13, fontweight="bold")
-
-# Left: mean trajectory across all runs
-ax = axes[0]
-for name, histories in all_histories.items():
-    color = COLORS.get(name, "gray")
-    # Align all histories to the shortest run length, then average
+# ── Left: mean + best convergence per config, x = actual iteration ─
+for cfg, histories in all_histories.items():
+    color   = COLORS[cfg]
     min_len = min(len(h) for h in histories)
-    aligned = [[h[i] for h in histories] for i in range(min_len)]
-    mean_curve = [mean(row) for row in aligned]
-    best_curve = [min(row) for row in aligned]
 
-    xs = [100.0 * i / min_len for i in range(min_len)]
-    # Downsample
-    step = max(1, min_len // TARGET_PTS)
-    xs_d = xs[::step]
+    mean_curve = [_mean([h[i] for h in histories]) for i in range(min_len)]
+    best_curve = [min(h[i]   for h in histories)   for i in range(min_len)]
+
+    step   = max(1, min_len // 600)
+    iters  = list(range(0, min_len, step))
     mean_d = mean_curve[::step]
     best_d = best_curve[::step]
 
-    ax.plot(xs_d, mean_d, color=color, linewidth=1.8, label=f"{name} (mean)")
-    ax.plot(xs_d, best_d, color=color, linewidth=0.8, linestyle="--", alpha=0.6)
+    ax1.plot(iters, mean_d, color=color, linewidth=2.0,
+             label=f"Config {cfg} (mean)")
+    ax1.plot(iters, best_d, color=color, linewidth=0.8,
+             linestyle="--", alpha=0.5)
 
-ax.axhline(y=INITIAL_COST, color="red", linestyle=":", linewidth=1.2,
-           label=f"Initial: {INITIAL_COST:,.0f}")
-ax.set_xlabel("Run completion (%)")
-ax.set_ylabel("Best cost")
-ax.set_title("Mean trajectory (solid) + best trajectory (dashed)")
-ax.legend(fontsize=8)
-ax.grid(True, alpha=0.3)
-ax.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, _: f"{x:,.0f}"))
+ax1.axhline(y=INITIAL_COST, color="red", linestyle=":", linewidth=1.2,
+            label=f"Initial cost")
 
-# Right: final cost distribution (all N_RUNS points per config)
-ax2 = axes[1]
-positions = range(len(config_names))
-bp_data   = [all_data[n] for n in config_names]
-short_labels = [n.split(" - ")[1] if " - " in n else n for n in config_names]
+# stagnation reference lines matching your report text
+for xmark, lbl in [(17_000, "~17k\n(A,B plateau)"),
+                   (27_500, "~27.5k\n(C,D plateau)")]:
+    ax1.axvline(x=xmark, color="gray", linestyle="--", linewidth=1.0, alpha=0.65)
+    ypos = ax1.get_ylim()[0] if ax1.get_ylim()[0] > 100_000 else INITIAL_COST * 0.54
+    ax1.text(xmark + 300, INITIAL_COST * 0.535, lbl,
+             fontsize=7.5, color="dimgray", va="bottom")
 
-bp = ax2.boxplot(bp_data, positions=positions, widths=0.5, patch_artist=True,
-                 medianprops=dict(color="black", linewidth=2))
+ax1.set_xlabel("Iteration", fontsize=11)
+ax1.set_ylabel("Best cost (lower = better)", fontsize=11)
+ax1.set_title("Mean convergence curves\n"
+              "solid = mean across runs  |  dashed = best run", fontsize=10)
+ax1.legend(fontsize=8, ncol=2)
+ax1.grid(True, alpha=0.25)
+ax1.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, _: f"{x:,.0f}"))
 
-for patch, name in zip(bp["boxes"], config_names):
-    patch.set_facecolor(COLORS.get(name, "gray"))
-    patch.set_alpha(0.7)
+# ── Right: box-plot + jittered individual run points ───────────────
+positions = list(range(len(cfg_names)))
+bp_data   = [all_costs[c] for c in cfg_names]
 
-# Overlay individual points
-for i, (name, costs) in enumerate(all_data.items()):
-    jitter = [i + random.uniform(-0.1, 0.1) for _ in costs]
-    ax2.scatter(jitter, costs, s=18, color=COLORS.get(name, "gray"),
-                zorder=3, alpha=0.8)
+bp = ax2.boxplot(bp_data, positions=positions, widths=0.45,
+                 patch_artist=True,
+                 medianprops=dict(color="black", linewidth=2.2),
+                 whiskerprops=dict(linewidth=1.2),
+                 capprops=dict(linewidth=1.2),
+                 flierprops=dict(marker="x", markersize=5, markeredgecolor="gray"))
 
-ax2.set_xticks(list(positions))
-ax2.set_xticklabels(short_labels, fontsize=9)
-ax2.set_ylabel("Final cost")
-ax2.set_title(f"Cost distribution ({N_RUNS} runs each)")
-ax2.grid(True, alpha=0.3, axis="y")
+for patch, cfg in zip(bp["boxes"], cfg_names):
+    patch.set_facecolor(COLORS[cfg])
+    patch.set_alpha(0.65)
+
+for i, cfg in enumerate(cfg_names):
+    xs = [i + random.uniform(-0.13, 0.13) for _ in all_costs[cfg]]
+    ax2.scatter(xs, all_costs[cfg], s=22, color=COLORS[cfg], zorder=4, alpha=0.85)
+
+ax2.set_xticks(positions)
+ax2.set_xticklabels(
+    [f"Config {c}\nCV={stats[c]['cv']:.1f}%" for c in cfg_names],
+    fontsize=9
+)
+ax2.set_ylabel("Final cost (lower = better)", fontsize=11)
+ax2.set_title(f"Cost distribution across {N_RUNS} runs\n"
+              "Dots = individual runs  |  Line = median", fontsize=10)
+ax2.grid(True, alpha=0.25, axis="y")
 ax2.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, _: f"{x:,.0f}"))
 
-# Legend patches
-patches = [mpatches.Patch(color=COLORS.get(n, "gray"), alpha=0.7, label=n)
-           for n in config_names]
-ax2.legend(handles=patches, fontsize=8, loc="upper right")
+patches = [mpatches.Patch(facecolor=COLORS[c], alpha=0.7, label=f"Config {c}")
+           for c in cfg_names]
+ax2.legend(handles=patches, fontsize=9, loc="upper right")
 
 plt.tight_layout()
-plt.savefig(OUT_CURVES, dpi=150)
-print(f"\n  Learning curves saved → {OUT_CURVES}")
+plt.savefig(OUT_PLOT, dpi=150, bbox_inches="tight")
+print(f"  Plot saved → {OUT_PLOT}")
 
 # ═══════════════════════════════════════════════════════════════════
 #  DONE
 # ═══════════════════════════════════════════════════════════════════
 
 total_elapsed = time.perf_counter() - global_start
-print(f"\n  Raw data     → {OUT_RAW}")
-print(f"  Summary CSV  → {OUT_SUMMARY}")
-print(f"  Report text  → {OUT_REPORT}")
-print(f"  Plot         → {OUT_CURVES}")
+print(f"\n  {OUT_RAW}")
+print(f"  {OUT_SUMMARY}")
+print(f"  {OUT_REPORT}")
+print(f"  {OUT_PLOT}")
 print(f"\n  Total runtime: {timedelta(seconds=int(total_elapsed))}\n")

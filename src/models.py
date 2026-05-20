@@ -1,5 +1,5 @@
 
-THIRD_DAY_OPTION = ["wednesday","Thursday", "Sunday"]
+THIRD_DAY_OPTION = ["Wednesday","Thursday", "Sunday"]
 ROUND_DAYS = ["Friday", "Saturday"]
 
 class Team:

@@ -259,155 +259,155 @@ def analyze_convergence(history, config_name):
 #               f"{d['convergence_pct']:>12.0f}% "
 #               f"{'yes' if d['plateaued'] else 'no':>12}")
      
-if __name__ == "__main__":
+# if __name__ == "__main__":
 
-    teamms, distances = load_all("../data/teams.csv")
-    WEEKEND_DAYS = {"Friday", "Saturday"}
-    derbie = load_derbies("../data/derbies.csv")
-    schedulle = double_round_robin(teamms)
-    shechdual = assign_all_days(schedulle)
+#     teamms, distances = load_all("../data/teams.csv")
+#     WEEKEND_DAYS = {"Friday", "Saturday"}
+#     derbie = load_derbies("../data/derbies.csv")
+#     schedulle = double_round_robin(teamms)
+#     shechdual = assign_all_days(schedulle)
 
-    initial_cost = cost_function(shechdual, teamms, distances, derbie, WEEKEND_DAYS)
-    print(f"Initial cost: {initial_cost:.0f}\n")
+#     initial_cost = cost_function(shechdual, teamms, distances, derbie, WEEKEND_DAYS)
+#     print(f"Initial cost: {initial_cost:.0f}\n")
 
-    configs = [
-        ("A - baseline",  {"T_start": 8000,  "alpha": 0.9995, "T_min": 0.1, "max_iteration": 20000, "reheat_every": 2000, "reheat_factor": 2.0}),
-        ("B - fast cool", {"T_start": 8000,  "alpha": 0.9994, "T_min": 0.1, "max_iteration": 20000, "reheat_every": 2000, "reheat_factor": 2.0}),
-        ("C - slow cool", {"T_start": 15000, "alpha": 0.9997, "T_min": 0.1, "max_iteration": 30000, "reheat_every": 4000, "reheat_factor": 2.5}),
-        ("D - cold start",{"T_start": 8000,  "alpha": 0.9997, "T_min": 0.1, "max_iteration": 30000, "reheat_every": 4000, "reheat_factor": 2.0}),
-    ]
+#     configs = [
+#         ("A - baseline",  {"T_start": 8000,  "alpha": 0.9995, "T_min": 0.1, "max_iteration": 20000, "reheat_every": 2000, "reheat_factor": 2.0}),
+#         ("B - fast cool", {"T_start": 8000,  "alpha": 0.9994, "T_min": 0.1, "max_iteration": 20000, "reheat_every": 2000, "reheat_factor": 2.0}),
+#         ("C - slow cool", {"T_start": 15000, "alpha": 0.9997, "T_min": 0.1, "max_iteration": 30000, "reheat_every": 4000, "reheat_factor": 2.5}),
+#         ("D - cold start",{"T_start": 8000,  "alpha": 0.9997, "T_min": 0.1, "max_iteration": 30000, "reheat_every": 4000, "reheat_factor": 2.0}),
+#     ]
 
-    RUNS = 3
-    all_summary = {}  # for final table
-    all_histories_per_config = {}  # for convergence plot
+#     RUNS = 3
+#     all_summary = {}  # for final table
+#     all_histories_per_config = {}  # for convergence plot
 
-    for name, params in configs:
-        print(f"{'='*55}")
-        print(f"  Config: {name}")
-        print(f"{'='*55}")
+#     for name, params in configs:
+#         print(f"{'='*55}")
+#         print(f"  Config: {name}")
+#         print(f"{'='*55}")
 
-        costs       = []
-        times       = []
-        conv_pcts   = []
-        still_imprs = []
-        all_runs_histories = []
+#         costs       = []
+#         times       = []
+#         conv_pcts   = []
+#         still_imprs = []
+#         all_runs_histories = []
 
-        for run in range(RUNS):
-            sched_copy = deepcopy(shechdual)
+#         for run in range(RUNS):
+#             sched_copy = deepcopy(shechdual)
 
-            start = time.time()
-            _, best_cost, history = simulated_annealing(
-                schedule  = sched_copy,
-                distances = distances,
-                derbies   = derbie,
-                weekends  = WEEKEND_DAYS,
-                teams     = teamms,
-                cost_fn   = cost_function,
-                **params
-            )
-            elapsed = time.time() - start
+#             start = time.time()
+#             _, best_cost, history = simulated_annealing(
+#                 schedule  = sched_copy,
+#                 distances = distances,
+#                 derbies   = derbie,
+#                 weekends  = WEEKEND_DAYS,
+#                 teams     = teamms,
+#                 cost_fn   = cost_function,
+#                 **params
+#             )
+#             elapsed = time.time() - start
 
-            improvement = ((initial_cost - best_cost) / initial_cost) * 100
+#             improvement = ((initial_cost - best_cost) / initial_cost) * 100
 
-            # ── convergence metrics for this run ──
-            total_iter = len(history)
-            final_cost = history[-1]
-            target     = history[0] - 0.90 * (history[0] - final_cost)
-            conv_iter  = next(
-                (i for i, c in enumerate(history) if c <= target),
-                total_iter
-            )
-            conv_pct = (conv_iter / total_iter) * 100
+#             # ── convergence metrics for this run ──
+#             total_iter = len(history)
+#             final_cost = history[-1]
+#             target     = history[0] - 0.90 * (history[0] - final_cost)
+#             conv_iter  = next(
+#                 (i for i, c in enumerate(history) if c <= target),
+#                 total_iter
+#             )
+#             conv_pct = (conv_iter / total_iter) * 100
 
-            last_20_start   = int(0.8 * total_iter)
-            improv_last_20  = history[last_20_start] - history[-1]
-            still_improving = improv_last_20 > 0
+#             last_20_start   = int(0.8 * total_iter)
+#             improv_last_20  = history[last_20_start] - history[-1]
+#             still_improving = improv_last_20 > 0
 
-            costs.append(best_cost)
-            times.append(elapsed)
-            conv_pcts.append(conv_pct)
-            still_imprs.append(still_improving)
-            all_runs_histories.append(history)
+#             costs.append(best_cost)
+#             times.append(elapsed)
+#             conv_pcts.append(conv_pct)
+#             still_imprs.append(still_improving)
+#             all_runs_histories.append(history)
 
-            print(f"  Run {run+1}: cost={best_cost:.0f}  "
-                  f"improvement={improvement:.1f}%  "
-                  f"time={elapsed:.1f}s  "
-                  f"90%gain@{conv_pct:.0f}%  "
-                  f"still_improving={'yes' if still_improving else 'NO'}")
+#             print(f"  Run {run+1}: cost={best_cost:.0f}  "
+#                   f"improvement={improvement:.1f}%  "
+#                   f"time={elapsed:.1f}s  "
+#                   f"90%gain@{conv_pct:.0f}%  "
+#                   f"still_improving={'yes' if still_improving else 'NO'}")
 
-        # ── averages ──
-        avg_cost    = sum(costs) / RUNS
-        avg_time    = sum(times) / RUNS
-        avg_imp     = ((initial_cost - avg_cost) / initial_cost) * 100
-        avg_conv    = sum(conv_pcts) / RUNS
-        min_cost    = min(costs)
-        max_cost    = max(costs)
-        variance    = max_cost - min_cost
-        all_improving = all(still_imprs)
+#         # ── averages ──
+#         avg_cost    = sum(costs) / RUNS
+#         avg_time    = sum(times) / RUNS
+#         avg_imp     = ((initial_cost - avg_cost) / initial_cost) * 100
+#         avg_conv    = sum(conv_pcts) / RUNS
+#         min_cost    = min(costs)
+#         max_cost    = max(costs)
+#         variance    = max_cost - min_cost
+#         all_improving = all(still_imprs)
 
-        print(f"\n  → Avg cost     : {avg_cost:.0f}")
-        print(f"  → Avg improve  : {avg_imp:.1f}%")
-        print(f"  → Avg time     : {avg_time:.1f}s")
-        print(f"  → Avg 90% gain : {avg_conv:.0f}% through run")
-        print(f"  → Cost range   : {min_cost:.0f} – {max_cost:.0f}  (variance={variance:.0f})")
-        print(f"  → Still improving in last 20%: {'all runs yes' if all_improving else 'some runs plateaued'}\n")
+#         print(f"\n  → Avg cost     : {avg_cost:.0f}")
+#         print(f"  → Avg improve  : {avg_imp:.1f}%")
+#         print(f"  → Avg time     : {avg_time:.1f}s")
+#         print(f"  → Avg 90% gain : {avg_conv:.0f}% through run")
+#         print(f"  → Cost range   : {min_cost:.0f} – {max_cost:.0f}  (variance={variance:.0f})")
+#         print(f"  → Still improving in last 20%: {'all runs yes' if all_improving else 'some runs plateaued'}\n")
 
-        all_summary[name] = {
-            "avg_cost"  : avg_cost,
-            "avg_imp"   : avg_imp,
-            "avg_time"  : avg_time,
-            "avg_conv"  : avg_conv,
-            "min_cost"  : min_cost,
-            "max_cost"  : max_cost,
-            "variance"  : variance,
-            "all_improving": all_improving,
-        }
+#         all_summary[name] = {
+#             "avg_cost"  : avg_cost,
+#             "avg_imp"   : avg_imp,
+#             "avg_time"  : avg_time,
+#             "avg_conv"  : avg_conv,
+#             "min_cost"  : min_cost,
+#             "max_cost"  : max_cost,
+#             "variance"  : variance,
+#             "all_improving": all_improving,
+#         }
 
-        # keep the best run's history for the convergence plot
-        best_run_idx = costs.index(min(costs))
-        all_histories_per_config[name] = all_runs_histories[best_run_idx]
+#         # keep the best run's history for the convergence plot
+#         best_run_idx = costs.index(min(costs))
+#         all_histories_per_config[name] = all_runs_histories[best_run_idx]
 
-    # ══════════════════════════════════════════════════
-    #  FINAL SUMMARY TABLE
-    # ══════════════════════════════════════════════════
-    print(f"\n{'='*90}")
-    print("  FINAL SUMMARY TABLE")
-    print(f"{'='*90}")
-    print(f"  {'Config':<18} {'Avg Cost':>10} {'Improv':>8} {'Time(s)':>9} "
-          f"{'90%gain@':>9} {'Min cost':>10} {'Max cost':>10} {'Variance':>10}")
-    print(f"  {'-'*88}")
-    for name, r in all_summary.items():
-        print(f"  {name:<18} {r['avg_cost']:>10.0f} {r['avg_imp']:>7.1f}% "
-              f"{r['avg_time']:>9.1f} {r['avg_conv']:>8.0f}% "
-              f"{r['min_cost']:>10.0f} {r['max_cost']:>10.0f} "
-              f"{r['variance']:>10.0f}")
+#     # ══════════════════════════════════════════════════
+#     #  FINAL SUMMARY TABLE
+#     # ══════════════════════════════════════════════════
+#     print(f"\n{'='*90}")
+#     print("  FINAL SUMMARY TABLE")
+#     print(f"{'='*90}")
+#     print(f"  {'Config':<18} {'Avg Cost':>10} {'Improv':>8} {'Time(s)':>9} "
+#           f"{'90%gain@':>9} {'Min cost':>10} {'Max cost':>10} {'Variance':>10}")
+#     print(f"  {'-'*88}")
+#     for name, r in all_summary.items():
+#         print(f"  {name:<18} {r['avg_cost']:>10.0f} {r['avg_imp']:>7.1f}% "
+#               f"{r['avg_time']:>9.1f} {r['avg_conv']:>8.0f}% "
+#               f"{r['min_cost']:>10.0f} {r['max_cost']:>10.0f} "
+#               f"{r['variance']:>10.0f}")
 
-    best_config = min(all_summary, key=lambda k: all_summary[k]["avg_cost"])
-    print(f"\n  → Best configuration: {best_config} "
-          f"(avg_cost={all_summary[best_config]['avg_cost']:.0f}, "
-          f"improvement={all_summary[best_config]['avg_imp']:.1f}%)")
+#     best_config = min(all_summary, key=lambda k: all_summary[k]["avg_cost"])
+#     print(f"\n  → Best configuration: {best_config} "
+#           f"(avg_cost={all_summary[best_config]['avg_cost']:.0f}, "
+#           f"improvement={all_summary[best_config]['avg_imp']:.1f}%)")
 
-    # ══════════════════════════════════════════════════
-    #  CONVERGENCE PLOT — best run of each config
-    # ══════════════════════════════════════════════════
-    plt.figure(figsize=(13, 6))
-    colors = ['steelblue', 'orange', 'green', 'purple']
+#     # ══════════════════════════════════════════════════
+#     #  CONVERGENCE PLOT — best run of each config
+#     # ══════════════════════════════════════════════════
+#     plt.figure(figsize=(13, 6))
+#     colors = ['steelblue', 'orange', 'green', 'purple']
 
-    for (name, history), color in zip(all_histories_per_config.items(), colors):
-        plt.plot(history, linewidth=1.3, label=name, color=color)
+#     for (name, history), color in zip(all_histories_per_config.items(), colors):
+#         plt.plot(history, linewidth=1.3, label=name, color=color)
 
-    plt.axhline(y=initial_cost, color='red', linestyle='--',
-                linewidth=1.5, label=f'Initial: {initial_cost:.0f}')
+#     plt.axhline(y=initial_cost, color='red', linestyle='--',
+#                 linewidth=1.5, label=f'Initial: {initial_cost:.0f}')
 
-    plt.title('SA Convergence — All Configurations (best run each)')
-    plt.xlabel('Iteration')
-    plt.ylabel('Best Cost')
-    plt.legend()
-    plt.grid(True, alpha=0.3)
-    plt.tight_layout()
-    plt.savefig('convergence_final.png', dpi=150)
-    plt.show()
-    print("\nSaved: convergence_final.png")   
+#     plt.title('SA Convergence — All Configurations (best run each)')
+#     plt.xlabel('Iteration')
+#     plt.ylabel('Best Cost')
+#     plt.legend()
+#     plt.grid(True, alpha=0.3)
+#     plt.tight_layout()
+#     plt.savefig('convergence_final.png', dpi=150)
+#     plt.show()
+#     print("\nSaved: convergence_final.png")   
         
            
 # if __name__ == "__main__":
@@ -450,31 +450,31 @@ if __name__ == "__main__":
 #           f"improvement={results[best_config][2]:.1f}%)")
 
 
-# if __name__ == "__main__":
+if __name__ == "__main__":
 
-#     teamms , distances = load_all("../data/teams.csv")
-#     WEEKEND_DAYS = {"Friday", "Saturday"}
-#     derbie= load_derbies("../data/derbies.csv")
+    teamms , distances = load_all("../data/teams.csv")
+    WEEKEND_DAYS = {"Friday", "Saturday"}
+    derbie= load_derbies("../data/derbies.csv")
     
-#     schedulle = double_round_robin(teamms)
-#     shechdual = assign_all_days(schedulle)
-#     print(cost_function(shechdual,teamms,distances,derbie,WEEKEND_DAYS))
+    schedulle = double_round_robin(teamms)
+    shechdual = assign_all_days(schedulle)
+    print(cost_function(shechdual,teamms,distances,derbie,WEEKEND_DAYS))
     
-#     best, best_cost, history = simulated_annealing(
-#         schedule = shechdual,
-#         distances = distances,
-#         derbies = derbie,
-#         weekends = WEEKEND_DAYS,
-#         teams = teamms,
-#         T_start = 15000,
-#         T_min = 0.1,
-#         alpha = 0.9997,
-#         reheat_every  = 2_000,
-#         reheat_factor = 2.0,
-#         max_iteration = 20000,
-#         cost_fn=cost_function
-#     )
-#     print(f"\nBest schedule found (cost={best_cost}):")
+    best, best_cost, history = simulated_annealing(
+        schedule = shechdual,
+        distances = distances,
+        derbies = derbie,
+        weekends = WEEKEND_DAYS,
+        teams = teamms,
+        T_start = 15000,
+        T_min = 0.1,
+        alpha = 0.9997,
+        reheat_every  = 2_000,
+        reheat_factor = 2.0,
+        max_iteration = 20000,
+        cost_fn=cost_function
+    )
+    print(f"\nBest schedule found (cost={best_cost}):")
   
     
     

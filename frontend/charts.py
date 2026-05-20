@@ -3,16 +3,17 @@ import plotly.express as px
 import time
 import csv
 import os
-
+import sys
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 import pandas as pd
 
 from simulated_annealing import simulated_annealing
-from src.greedy import greedy_schedule
-from src.hill_climbing import hill_climbing
-from src.data_loader import load_all
-from src.Minimize_total import cost_function
-from src.schedule import double_round_robin, assign_all_days
-from src.csp_solver import csp_solver
+from greedy import greedy_schedule
+from HC import hill_climbing
+from data_loader import load_all
+from Minimize_total import cost_function
+from schedule import double_round_robin, assign_all_days
+from csp_solver import csp_solver
 
 
 # PATHS
@@ -25,10 +26,10 @@ derbies_path = os.path.join(BASE_DIR, "data", "derbies.csv")
 
 
 
-all_teams, distances = load_all(csv_path)
+all_teams, distances = load_all("data/teams.csv")
 
 
-with open(derbies_path, newline="", encoding="utf-8") as f:
+with open("data/derbies.csv", newline="", encoding="utf-8") as f:
     reader = csv.reader(f)
     next(reader)
     derbies = {
