@@ -49,7 +49,7 @@ class ScheduleCSP:
                 if m is None:
                     domains[(r_idx, s_idx)] = [
                         match for match in remaining_matches
-                        if self._is_safe(match, r_idx)
+                        if self.is_safe(match, r_idx)
                     ]
         return domains
 
@@ -91,7 +91,7 @@ class ScheduleCSP:
         for match_i in domains[slot_i]:
             has_support = any(
                 match_j != match_i and
-                self._are_consistent(match_i, slot_i, match_j, slot_j)
+                self.are_consistent(match_i, slot_i, match_j, slot_j)
                 for match_j in domains[slot_j]
             )
             if has_support:
@@ -168,7 +168,7 @@ class ScheduleCSP:
             new_remaining = [m for m in remaining_matches if m != match]
 
             if is_partially_valid(self.sched):
-                new_domains = self._build_initial_domains(new_remaining)
+                new_domains = self.build_initial_domains(new_remaining)
 
                 if self.ac3(new_domains):
                     result = self.backtrack(new_domains, new_remaining, start_time, time_limit)

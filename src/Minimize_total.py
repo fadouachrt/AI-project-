@@ -27,10 +27,10 @@ def cost_function(schedule, teams, dict_Matric, derbies, weekend, penalty=500):
     total_cost = 0
 
     total_cost += total_distance(schedule, dict_Matric, teams)
-    total_cost += Rest_day_penalty(schedule, teams, penalty)
-    total_cost += Derbies_penalty(schedule, derbies, weekend, penalty)
+    total_cost += Rest_day_penalty(schedule, teams, 600)
+    total_cost += Derbies_penalty(schedule, derbies, weekend,300)
     for team in teams:
-        total_cost+=successive_away_penalty(team, schedule, penalty)
+        total_cost+=successive_away_penalty(team, schedule, 900)
 
     
     return total_cost

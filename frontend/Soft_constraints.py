@@ -1,7 +1,7 @@
 
 from models import Match , Round , Schedule
 
-def Derbies_penalty(schedule, derbies, weekend, penalty=1000):
+def Derbies_penalty(schedule, derbies, weekend, penalty=500):
 
     total = 0
 
@@ -45,7 +45,7 @@ def Rest_day_penalty(schedule, teams, penalty=500):
                 total += penalty
 
     return total
-def successive_away_penalty(team, schedule, penalty=7000):
+def successive_away_penalty(team, schedule, penalty=500):
     total = 0
     counter = 0
     for round_obj in schedule.rounds:

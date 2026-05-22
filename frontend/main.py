@@ -276,7 +276,8 @@ from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+FRONTEND_DIR = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, FRONTEND_DIR)
 
 from runner import ALGO_RUNNERS, get_team_meta, get_all_teams, get_derby_set
 
@@ -290,13 +291,14 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.mount("/static", StaticFiles(directory="static"), name="static")
-if os.path.exists("images"):
-    app.mount("/images", StaticFiles(directory="images"), name="images")
+app.mount("/static", StaticFiles(directory=os.path.join(FRONTEND_DIR, "static")), name="static")
+images_dir = os.path.join(FRONTEND_DIR, "images")
+if os.path.exists(images_dir):
+    app.mount("/images", StaticFiles(directory=images_dir), name="images")
 
 @app.get("/", response_class=HTMLResponse)
 async def root():
-    with open("static/index.html", "r", encoding="utf-8") as f:
+    with open(os.path.join(FRONTEND_DIR, "static", "index.html"), "r", encoding="utf-8") as f:
         return HTMLResponse(content=f.read())
 
 @app.get("/api/teams")

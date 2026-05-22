@@ -73,6 +73,13 @@ def _apply_positions(round_obj: Round,
     """
     Update team locations after a round.
     """
+    updated = dict(positions)
+    for match in round_obj.matches:
+        if match is None:
+            continue
+        updated[match.away.name] = match.home.name
+        updated[match.home.name] = match.home.name
+    return updated
 
 
 def _round_score(round_obj: Round,
