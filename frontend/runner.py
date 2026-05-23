@@ -252,7 +252,7 @@ async def run_csp(n_teams: int):
     teams_slice = _teams_obj[:n_teams]
     start = time.perf_counter()
 
-    sched = await asyncio.to_thread(csp_solver, teams_slice, 60)
+    sched = await asyncio.to_thread(csp_solver, teams_slice, 600)
     if sched is None:
         raise RuntimeError("CSP solver returned no schedule")
 
